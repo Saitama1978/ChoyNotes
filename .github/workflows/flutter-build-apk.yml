@@ -331,45 +331,14 @@ jobs:
         </manifest>
         EOF
 
-    - name: Inject Correct Modern Kotlin build.gradle.kts
+    - name: Safely Inject Namespace into Flutter-Generated Build Script
       run: |
-        cat << 'EOF' > android/app/build.gradle.kts
-        plugins {
-            id("com.android.application")
-            id("kotlin-android")
-            id("dev.flutter.flutter-gradle-plugin")
-        }
-
-        android {
-            namespace = "com.choynotes.app"
-            compileSdk = 34
-
-            compileOptions {
-                sourceCompatibility = JavaVersion.VERSION_17
-                targetCompatibility = JavaVersion.VERSION_17
-            }
-
-            kotlinOptions {
-                compilerOptions {
-                    jvmTarget.set(org.jetbrains.kotlin.config.JvmTarget.JVM_17)
-                }
-            }
-
-            defaultConfig {
-                applicationId = "com.choynotes.app"
-                minSdk = 21
-                targetSdk = 34
-                versionCode = 1
-                versionName = "1.0.0"
-            }
-
-            buildTypes {
-                release {
-                    signingConfig = signingConfigs.getByName("debug")
-                }
-            }
-        }
-        EOF
+        # Hinahanap kung anong build file format ang ginawa ni flutter at ligtas na idinidikit ang namespace rule sa dulo ng android block
+        if [ -f "android/app/build.gradle.kts" ]; then
+          sed -i '/android {/a \    namespace = "com.choynotes.app"' android/app/build.gradle.kts
+        elif [ -f "android/app/build.gradle" ]; then
+          sed -i '/android {/a \    namespace "com.choynotes.app"' android/app/build.gradle
+        fi
 
     - name: Fetch Flutter Dependencies
       run: flutter pub get
