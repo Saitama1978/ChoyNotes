@@ -67,7 +67,7 @@ jobs:
         }
 
         class HomeScreen extends StatefulWidget {
-          const HomeScreen({super.key});
+          const HomeScreen(--super.key);
 
           @override
           State<HomeScreen> createState() => _HomeScreenState();
@@ -224,7 +224,6 @@ jobs:
               ),
               body: Column(
                 children: [
-                  // DEVELOPER PROFILE BANNER
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
@@ -256,7 +255,6 @@ jobs:
                     ),
                   ),
 
-                  // LIVE TRANSCRIPT DISPLAY CARD
                   Expanded(
                     flex: 3,
                     child: Container(
@@ -289,7 +287,6 @@ jobs:
                     ),
                   ),
 
-                  // ACTIONS BUTTON
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16.0),
                     child: SizedBox(
@@ -312,7 +309,6 @@ jobs:
 
                   const SizedBox(height: 16),
                   
-                  // SECTION LABEL
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 4.0),
                     child: Row(
@@ -331,7 +327,6 @@ jobs:
                     ),
                   ),
 
-                  // LIST VIEW OF NOTES
                   Expanded(
                     flex: 4,
                     child: _savedNotes.isEmpty
@@ -494,15 +489,33 @@ jobs:
         </manifest>
         EOF
 
-    - name: Force Upgrade Android SDK Version to 36 (Fix Version Conflicts)
+    - name: Global Subprojects SDK Safety Force-Override
       run: |
-        # Override at pinapataas ang compile at target SDK sa 36 para pumasok ang modern plugins
+        # Ino-override nito ang mismong root level buildscript para pilitin ang lahat ng sub-modules (gaya ng share_plus) na mag-build gamit ang SDK 34 at Java 17.
+        cat << 'EOF' >> android/build.gradle
+
+        subprojects {
+            afterEvaluate { project ->
+                if (project.hasProperty('android')) {
+                    project.android {
+                        compileSdkVersion 34
+                        defaultConfig {
+                            targetSdkVersion 34
+                        }
+                    }
+                }
+            }
+        }
+        EOF
+
+    - name: Force Upgrade Android App Build Gradle Versions
+      run: |
         if [ -f "android/app/build.gradle" ]; then
-          sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 36/g' android/app/build.gradle
-          sed -i 's/targetSdkVersion flutter.targetSdkVersion/targetSdkVersion 36/g' android/app/build.gradle
+          sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 34/g' android/app/build.gradle
+          sed -i 's/targetSdkVersion flutter.targetSdkVersion/targetSdkVersion 34/g' android/app/build.gradle
         elif [ -f "android/app/build.gradle.kts" ]; then
-          sed -i 's/compileSdk = .*/compileSdk = 36/g' android/app/build.gradle.kts
-          sed -i 's/targetSdk = .*/targetSdk = 36/g' android/app/build.gradle.kts
+          sed -i 's/compileSdk = .*/compileSdk = 34/g' android/app/build.gradle.kts
+          sed -i 's/targetSdk = .*/targetSdk = 34/g' android/app/build.gradle.kts
         fi
 
     - name: Safely Inject Namespace into Flutter-Generated Build Script
