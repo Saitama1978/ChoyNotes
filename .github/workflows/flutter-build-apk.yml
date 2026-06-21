@@ -27,9 +27,8 @@ jobs:
       with:
         channel: 'stable'
 
-    - name: Create Fresh Clean App Directory
+    - name: Nuke and Recreate Clean Project Environment
       run: |
-        # Lilinisin natin ang workspace para walang lumang gradle settings na makagulo
         rm -rf android ios web windows macos linux
         flutter create . --org com.choynotes.app --project-name choynotes
 
@@ -492,7 +491,7 @@ jobs:
         </manifest>
         EOF
 
-    - name: Force Specific SDK Version Overrides on Subprojects
+    - name: Force Global BuildScript Core SDK Overrides
       run: |
         cat << 'EOF' >> android/build.gradle
 
@@ -510,12 +509,16 @@ jobs:
         }
         EOF
 
-    - name: Force Hardcoded SDK Versions in App Build
+    - name: Patch Native Script Injection for Modern Android App Builds
       run: |
         if [ -f "android/app/build.gradle" ]; then
           sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 34/g' android/app/build.gradle
           sed -i 's/targetSdkVersion flutter.targetSdkVersion/targetSdkVersion 34/g' android/app/build.gradle
           sed -i '/android {/a \    namespace "com.choynotes.app"' android/app/build.gradle
+        elif [ -f "android/app/build.gradle.kts" ]; then
+          sed -i 's/compileSdk = .*/compileSdk = 34/g' android/app/build.gradle.kts
+          sed -i 's/targetSdk = .*/targetSdk = 34/g' android/app/build.gradle.kts
+          sed -i '/android {/a \    namespace = "com.choynotes.app"' android/app/build.gradle.kts
         fi
 
     - name: Fetch Flutter Dependencies
@@ -528,11 +531,17 @@ jobs:
     - name: Generate Custom Launcher Icons
       run: flutter pub run flutter_launcher_icons
 
-    - name: Build Clean APK
-      run: flutter build apk --release
+    - name: Build Assets and Plugins First
+      run: flutter build bundle
+
+    - name: Direct Native Gradle Build AssembleRelease
+      run: |
+        cd android
+        chmod +x gradlew
+        ./gradlew assembleRelease
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
         name: ChoyNotes-Release-APK
-        path: build/app/outputs/flutter-apk/app-release.apk
+        path: android/app/build/outputs/apk/release/app-release.apk
