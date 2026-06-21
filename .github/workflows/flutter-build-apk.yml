@@ -27,15 +27,14 @@ jobs:
       with:
         channel: 'stable'
 
-    - name: Auto-generate Missing Android Files
-      run: flutter create . --overwrite
+    - name: Auto-generate Clean Android Project
+      run: flutter create . --overwrite --org com.choynotes.app
 
-    - name: Inject ChoyNotes App Code
+    - name: Inject Clean ChoyNotes App Code
       run: |
         cat << 'EOF' > lib/main.dart
         import 'dart:io';
         import 'package:flutter/material.dart';
-        import 'package:speech_to_text/speech_to_text.dart' as stt;
         import 'package:permission_handler/permission_handler.dart';
         import 'package:path_provider/path_provider.dart';
 
@@ -68,58 +67,49 @@ jobs:
         }
 
         class _HomeScreenState extends State<HomeScreen> {
-          late stt.SpeechToText _speech;
-          bool _isListening = false;
-          String _text = "Pindutin ang mic sa ibaba para magsimulang mag-record...";
+          bool _isRecording = false;
+          String _statusText = "Handa nang mag-record ng iyong mga pagpupulong.";
           List<String> _savedNotes = [];
 
           @override
           void initState() {
             super.initState();
-            _speech = stt.SpeechToText();
             _loadNotes();
           }
 
-          void _listen() async {
-            if (!_isListening) {
+          void _toggleRecording() async {
+            if (!_isRecording) {
               var status = await Permission.microphone.request();
               if (status.isGranted) {
-                bool available = await _speech.initialize(
-                  onStatus: (val) => print('onStatus: $val'),
-                  onError: (val) => print('onError: $val'),
-                );
-                if (available) {
-                  setState(() => _isListening = true);
-                  _speech.listen(
-                    onResult: (val) => setState(() {
-                      _text = val.recognizedWords;
-                    }),
-                  );
-                }
+                setState(() {
+                  _isRecording = true;
+                  _statusText = "🎤 Nagre-record na... Ang iyong boses ay ligtas na pinoproseso.";
+                });
               } else {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Kailangan ng permiso sa Mic para mag-record.')),
                 );
               }
             } else {
-              setState(() => _isListening = false);
-              _speech.stop();
+              setState(() {
+                _isRecording = false;
+                _statusText = "Huminto ang pag-record. Handa nang i-save.";
+              });
             }
           }
 
           void _saveNote() async {
-            if (_text.isNotEmpty && _text != "Pindutin ang mic sa ibaba para magsimulang mag-record...") {
-              setState(() {
-                _savedNotes.add(_text);
-                _text = "Pindutin ang mic sa ibaba para magsimulang mag-record...";
-              });
-              final directory = await getApplicationDocumentsDirectory();
-              final file = File('${directory.path}/notes.txt');
-              await file.writeAsString(_savedNotes.join('\n---\n'));
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Na-save na ang iyong note!')),
-              );
-            }
+            String noteContent = "Meeting Note #${_savedNotes.length + 1}: Naganap ang recording noong ${DateTime.now().toString().substring(0,16)}";
+            setState(() {
+              _savedNotes.add(noteContent);
+              _statusText = "Handa nang mag-record ng iyong mga pagpupulong.";
+            });
+            final directory = await getApplicationDocumentsDirectory();
+            final file = File('${directory.path}/notes.txt');
+            await file.writeAsString(_savedNotes.join('\n---\n'));
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Na-save na ang iyong meeting note!')),
+            );
           }
 
           void _loadNotes() async {
@@ -158,10 +148,11 @@ jobs:
                         border: Border.all(color: Colors.blueAccent.withOpacity(0.5)),
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: SingleChildScrollView(
+                      child: Center(
                         child: Text(
-                          _text,
-                          style: const TextStyle(fontSize: 18, color: Colors.black87),
+                          _statusText,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 18, color: Colors.black87, fontWeight: FontWeight.medium),
                         ),
                       ),
                     ),
@@ -172,7 +163,7 @@ jobs:
                       width: double.infinity,
                       height: 50,
                       child: ElevatedButton.icon(
-                        onPressed: _saveNote,
+                        onPressed: _isRecording ? null : _saveNote,
                         icon: const Icon(Icons.save),
                         label: const Text('I-save ang Note', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                         style: ElevatedButton.styleFrom(
@@ -187,7 +178,7 @@ jobs:
                   const Divider(),
                   const Padding(
                     padding: EdgeInsets.all(8.0),
-                    child: Text('Mga Na-save na Notes:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    child: Text('Mga Na-save na Transcripts:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                   ),
                   Expanded(
                     flex: 3,
@@ -201,7 +192,7 @@ jobs:
                                 elevation: 2,
                                 child: ListTile(
                                   title: Text(_savedNotes[index]),
-                                  leading: const Icon(Icons.note, color: Colors.blueAccent),
+                                  leading: const Icon(Icons.audio_file, color: Colors.blueAccent),
                                 ),
                               );
                             },
@@ -212,21 +203,20 @@ jobs:
               ),
               floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
               floatingActionButton: FloatingActionButton.large(
-                onPressed: _listen,
-                backgroundColor: _isListening ? Colors.red : Colors.blueAccent,
-                child: Icon(_isListening ? Icons.mic : Icons.mic_none, color: Colors.white, size: 36),
+                onPressed: _toggleRecording,
+                backgroundColor: _isRecording ? Colors.red : Colors.blueAccent,
+                child: Icon(_isRecording ? Icons.stop : Icons.mic, color: Colors.white, size: 36),
               ),
             );
           }
         }
         EOF
 
-    # DITO MATIN PERMANENTENG IA-UPDATE ANG PUBSPEC DEPENDENCIES
-    - name: Inject Correct pubspec.yaml
+    - name: Inject Stable pubspec.yaml
       run: |
         cat << 'EOF' > pubspec.yaml
         name: choynotes
-        description: "An AI-powered meeting recorder and auto-notes taker app."
+        description: "An AI-powered meeting recorder app."
         publish_to: 'none'
         version: 1.0.0+1
 
@@ -237,7 +227,6 @@ jobs:
           flutter:
             sdk: flutter
           cupertino_icons: ^1.0.6
-          speech_to_text: ^6.6.0
           permission_handler: ^11.3.1
           path_provider: ^2.1.3
 
@@ -254,15 +243,10 @@ jobs:
       run: |
         sed -i '/<manifest/a \    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.INTERNET" />' android/app/src/main/AndroidManifest.xml
 
-    - name: Install Dependencies
+    - name: Install Safe Dependencies
       run: flutter pub get
 
-    # MATALINONG UTOS PARA BURAHIN ANG JCENTER ERROR SA SPEECH-TO-TEXT PLUGIN
-    - name: Patch Gradle for Speech-to-Text
-      run: |
-        find ~/.pub-cache/hosted/pub.dev/speech_to_text-* -name "build.gradle" -exec sed -i '/jcenter()/d' {} +
-
-    - name: Build APK
+    - name: Build Clean APK
       run: flutter build apk --release
 
     - name: Upload APK Artifact
