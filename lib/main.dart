@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:permission_handler/permission_handler.dart';
@@ -14,11 +15,14 @@ class ChoyNotesApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'ChoyNotes',
+      title: 'ChoyNotes AI',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueAccent),
-        useMaterial3: true, // Inayos mula sa useMaterialDesign
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF1A73E8), // Notta Blue Accent
+          background: const Color(0xFFF8F9FA),
+        ),
+        useMaterial3: true,
       ),
       home: const HomeScreen(),
     );
@@ -35,15 +39,20 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   late stt.SpeechToText _speech;
   bool _isListening = false;
-  bool _shouldBeListening = false; // Flag para sa tuloy-tuloy na pakikinig
+  bool _shouldBeListening = false;
   
-  // Gagamit tayo ng controller para sa Text Field para mas madaling dugtungan ang sulat
-  final TextEditingController _textController = TextEditingController(
-    text: "Pindutin ang mic sa ibaba para magsimulang mag-record..."
-  );
+  // Controller para sa real-time text input
+  final TextEditingController _textController = TextEditingController();
   
-  String _previousText = ""; // Lalagyan ng lumang text habang nagsasalita
-  List<String> _savedNotes = [];
+  // Real-time storage para hindi mawala ang data (Notta Auto-Save style)
+  String _finalizedText = ""; 
+  String _interimText = "";   
+  
+  List<Map<String, String>> _savedNotes = []; // May kasamang Date/Time at Duration
+
+  // Timer para sa duration tracker ng Notta
+  Timer? _recordingTimer;
+  int _secondsRecorded = 0;
 
   @override
   void initState() {
@@ -52,14 +61,41 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadNotes();
   }
 
+  // Timer logic gaya ng Notta
+  void _startTimer() {
+    _secondsRecorded = 0;
+    _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      setState(() {
+        _secondsRecorded++;
+      });
+    });
+  }
+
+  void _stopTimer() {
+    _recordingTimer?.cancel();
+  }
+
+  String _formatDuration(int totalSeconds) {
+    int minutes = totalSeconds ~/ 60;
+    int seconds = totalSeconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
   void _initAndStartSpeech() async {
     bool available = await _speech.initialize(
-      onError: (val) => print('onError: $val'),
+      onError: (val) {
+        print('onError: $val');
+        // Kung nag-timeout ang engine loop pero aktibo pa ang record, buhayin ulit gaya ng Notta
+        if (_shouldBeListening) _startListeningLoop();
+      },
       onStatus: (status) {
         print('onStatus: $status');
-        // KUNG KUSA SYANG NAG-STOP TAHIMIK ANG USER:
-        // Pero gusto pa rin natin makinig (_shouldBeListening), i-restart ang mic
         if (status == 'notListening' && _shouldBeListening) {
+          // I-commit ang huling narinig bago mag-restart ang bagong loop
+          if (_interimText.isNotEmpty) {
+            _finalizedText = "$_finalizedText $_interimText".trim();
+            _interimText = "";
+          }
           _startListeningLoop();
         }
       },
@@ -70,6 +106,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _isListening = true;
         _shouldBeListening = true;
       });
+      _startTimer();
       _startListeningLoop();
     }
   }
@@ -77,29 +114,28 @@ class _HomeScreenState extends State<HomeScreen> {
   void _startListeningLoop() async {
     if (!_shouldBeListening) return;
 
-    // Kunin ang kasalukuyang nakasulat para hindi mabura kapag may bagong narinig
-    _previousText = _textController.text;
-    if (_previousText == "Pindutin ang mic sa ibaba para magsimulang mag-record...") {
-      _previousText = "";
-    }
-
     await _speech.listen(
-      onResult: (val) => setState(() {
-        if (_previousText.isEmpty) {
-          _textController.text = val.recognizedWords;
-        } else {
-          // DUGTONG LOGIC: Lumang sinabi + space + bagong narinig
-          _textController.text = "$_previousText ${val.recognizedWords}";
-        }
-        
-        // I-move ang cursor sa dulo para laging kita ang sinusulat
-        _textController.selection = TextSelection.fromPosition(
-          TextPosition(offset: _textController.text.length)
-        );
-      }),
-      listenFor: const Duration(minutes: 5), // Makikinig nang hanggang 5 minuto
-      pauseFor: const Duration(seconds: 10), // 10 seconds na pause bago mag-refresh ang engine loop
+      onResult: (val) {
+        setState(() {
+          _interimText = val.recognizedWords;
+          
+          // Ipakita ang pinagsamang luma at bagong naririnig sa screen ng real-time
+          if (_finalizedText.isEmpty) {
+            _textController.text = _interimText;
+          } else {
+            _textController.text = "$_finalizedText $_interimText";
+          }
+
+          // I-scroll ang cursor sa pinakadulo gaya ng auto-scroll ng Notta
+          _textController.selection = TextSelection.fromPosition(
+            TextPosition(offset: _textController.text.length)
+          );
+        });
+      },
+      listenFor: const Duration(hours: 1), // Ituloy ang session hanggang isang oras
+      pauseFor: const Duration(seconds: 4),  // Mabilis mag-segment ng sentences para malinis ang pagkakadugtong
       partialResults: true,
+      listenMode: stt.ListenMode.dictation, // Naka-optimize para sa tuloy-tuloy na pagdidikta
     );
   }
 
@@ -107,9 +143,9 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!_isListening) {
       var status = await Permission.microphone.request();
       if (status.isGranted) {
-        if (_textController.text == "Pindutin ang mic sa ibaba para magsimulang mag-record...") {
-          _textController.clear();
-        }
+        _textController.clear();
+        _finalizedText = "";
+        _interimText = "";
         _initAndStartSpeech();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -117,49 +153,88 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
     } else {
-      setState(() {
-        _isListening = false;
-        _shouldBeListening = false;
-      });
-      _speech.stop();
+      _stopListeningAndLock();
+    }
+  }
+
+  void _stopListeningAndLock() async {
+    _stopTimer();
+    setState(() {
+      _isListening = false;
+      _shouldBeListening = false;
+      // Pagsamahin ang natitirang text sa memory
+      if (_interimText.isNotEmpty) {
+        _finalizedText = "$_finalizedText $_interimText".trim();
+      }
+      _textController.text = _finalizedText;
+    });
+    await _speech.stop();
+    
+    // Auto-save agad pagka-stop para siguradong ligtas ang transcription (Notta Style)
+    if (_textController.text.trim().isNotEmpty) {
+      _saveNote();
     }
   }
 
   void _saveNote() async {
-    String currentText = _textController.text.trim();
-    if (currentText.isNotEmpty && currentText != "Pindutin ang mic sa ibaba para magsimulang mag-record...") {
-      setState(() {
-        _savedNotes.add(currentText);
-        _textController.text = "Pindutin ang mic sa ibaba para magsimulang mag-record...";
+    String txt = _textController.text.trim();
+    if (txt.isEmpty) return;
+
+    String timestamp = "${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year} ${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}";
+    String durationStr = _formatDuration(_secondsRecorded == 0 ? 5 : _secondsRecorded);
+
+    setState(() {
+      _savedNotes.insert(0, {
+        'text': txt,
+        'date': timestamp,
+        'duration': durationStr,
       });
-      final directory = await getApplicationDocumentsDirectory();
-      final file = File('${directory.path}/notes.txt');
-      await file.writeAsString(_savedNotes.join('\n---\n'));
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Na-save na ang iyong note!')),
-        );
-      }
-    }
+      _textController.clear();
+      _finalizedText = "";
+      _interimText = "";
+    });
+
+    // Isulat sa File JSON para mas madaling i-parse ang Metadata ng Notta app
+    final directory = await getApplicationDocumentsDirectory();
+    final file = File('${directory.path}/notta_notes.txt');
+    
+    List<String> rawLines = _savedNotes.map((n) => "${n['date']}|${n['duration']}|${n['text']}").toList();
+    await file.writeAsString(rawLines.join('\n===\n'));
   }
 
   void _loadNotes() async {
     try {
       final directory = await getApplicationDocumentsDirectory();
-      final file = File('${directory.path}/notes.txt');
+      final file = File('${directory.path}/notta_notes.txt');
       if (await file.exists()) {
         String contents = await file.readAsString();
+        if (contents.trim().isEmpty) return;
+        
+        List<String> blocks = contents.split('\n===\n');
+        List<Map<String, String>> loaded = [];
+        
+        for (var block in blocks) {
+          var parts = block.split('|');
+          if (parts.length >= 3) {
+            loaded.add({
+              'date': parts[0],
+              'duration': parts[1],
+              'text': parts.sublist(2).join('|'), 
+            });
+          }
+        }
         setState(() {
-          _savedNotes = contents.split('\n---\n').where((s) => s.trim().isNotEmpty).toList();
+          _savedNotes = loaded;
         });
       }
     } catch (e) {
-      print(e);
+      print("Error loading notes: $e");
     }
   }
 
   @override
   void dispose() {
+    _recordingTimer?.cancel();
     _textController.dispose();
     super.dispose();
   }
@@ -167,79 +242,151 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF4F6F9),
       appBar: AppBar(
-        title: const Text('ChoyNotes - AI Recorder', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.blueAccent,
-        foregroundColor: Colors.white,
+        title: const Text('ChoyNotes AI', style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+        backgroundColor: Colors.white,
+        elevation: 0,
         centerTitle: true,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1.0),
+          child: Container(color: Colors.grey.withOpacity(0.2), height: 1.0),
+        ),
       ),
       body: Column(
         children: [
+          // UI Kapag nagre-record (Notta Live Board UI)
+          if (_isListening)
+            Container(
+              color: Colors.amber.shade50,
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 10,
+                    height: 10,
+                    decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Transcribing Live: ${_formatDuration(_secondsRecorded)}',
+                    style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.black87),
+                  ),
+                ],
+              ),
+            ),
+
+          // Main Transcription Editor Box
           Expanded(
-            flex: 3,
+            flex: 4,
             child: Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(20),
               margin: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: _isListening ? Colors.blueAccent.withOpacity(0.5) : Colors.transparent, width: 2),
                 boxShadow: [
-                  BoxShadow(
-                    color: Colors.grey.withAlpha(50),
-                    blurRadius: 10,
-                    spreadRadius: 2,
-                  )
-                ]
+                  BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4))
+                ],
               ),
-              // Pinalitan ng TextField para pwedeng i-scroll at i-edit gamit ang keyboard kung gusto mo
               child: TextField(
                 controller: _textController,
                 maxLines: null,
-                minLines: 10,
-                readOnly: _isListening, // Bawal muna i-type kapag nagsasalita para walang conflict
-                decoration: const InputDecoration(
+                readOnly: _isListening, // Pwedeng i-manual edit ng user kapag naka-pause ang mic gaya ng Notta
+                style: const TextStyle(fontSize: 17, height: 1.6, color: Colors.black87),
+                decoration: InputDecoration(
+                  hintText: _isListening ? "Nagsisimula nang makinig..." : "Pindutin ang Mic sa ibaba para mag-transcribe...",
                   border: InputBorder.none,
                 ),
-                style: const TextStyle(fontSize: 18, color: Colors.black87),
               ),
             ),
           ),
-          
-          // Listahan ng Saved Notes sa ibaba
-          Expanded(
-            flex: 2,
-            child: ListView.builder(
-              itemCount: _savedNotes.length,
-              itemBuilder: (context, index) {
-                return Card(
-                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                  child: ListTile(
-                    title: Text(_savedNotes[index], maxLines: 2, overflow: TextOverflow.ellipsis),
-                    subtitle: Text('Note #${index + 1}'),
-                  ),
-                );
-              },
+
+          // Recent Recordings / Transcripts (Notta Style List)
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 20),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Mga Transkripsyon', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black54)),
             ),
           ),
           
-          // Mga Buttons sa pinakababa
-          Padding(
-            padding: const EdgeInsets.only(bottom: 24.0, left: 16, right: 16),
-            boxShadow: const [],
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                FloatingActionButton(
-                  onPressed: _listen,
-                  backgroundColor: _isListening ? Colors.red : Colors.blueAccent,
-                  child: Icon(_isListening ? Icons.mic : Icons.mic_none, color: Colors.white),
-                ),
-                FloatingActionButton(
-                  onPressed: _saveNote,
-                  backgroundColor: Colors.green,
-                  child: const Icon(Icons.save, color: Colors.white),
-                ),
-              ],
+          Expanded(
+            flex: 3,
+            child: _savedNotes.isEmpty
+                ? const Center(child: Text('Walang nakaimbak na transkripsyon.', style: TextStyle(color: Colors.grey)))
+                : ListView.builder(
+                    itemCount: _savedNotes.length,
+                    itemBuilder: (context, index) {
+                      final item = _savedNotes[index];
+                      return Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          title: Text(item['text'] ?? '', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w500)),
+                          subtitle: Padding(
+                            padding: const EdgeInsets.only(top: 8.0),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.calendar_today, size: 12, color: Colors.black38),
+                                const SizedBox(width: 4),
+                                Text(item['date'] ?? '', style: const TextStyle(fontSize: 12, color: Colors.black45)),
+                                const SizedBox(width: 16),
+                                const Icon(Icons.timer_outlined, size: 14, color: Colors.black38),
+                                const SizedBox(width: 4),
+                                Text(item['duration'] ?? '00:00', style: const TextStyle(fontSize: 12, color: Colors.black45)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+
+          // Central control button bar (Notta Signature UI)
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 32),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.only(topLeft: Radius.circular(24), topRight: Radius.circular(24)),
+            ),
+            child: SafeArea(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  GestureDetector(
+                    onTap: _listen,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: _isListening ? Colors.red : const Color(0xFF1A73E8),
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: (_isListening ? Colors.red : const Color(0xFF1A73E8)).withOpacity(0.3),
+                            blurRadius: 12,
+                            spreadRadius: 2,
+                            offset: const Offset(0, 4),
+                          )
+                        ],
+                      ),
+                      child: Icon(
+                        _isListening ? Icons.stop : Icons.mic,
+                        size: 32,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           )
         ],
