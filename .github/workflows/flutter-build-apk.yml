@@ -27,6 +27,10 @@ jobs:
       with:
         channel: 'stable'
 
+    # UTOS PARA KUSA NGYANG LIKHAIN ANG KULANG NA ANDROID AT GRADLE FILES
+    - name: Auto-generate Missing Android Files
+      run: flutter create . --overwrite
+
     - name: Install Dependencies
       run: flutter pub get
 
