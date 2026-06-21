@@ -32,19 +32,16 @@ jobs:
         rm -rf android ios web windows macos linux
         flutter create . --org com.choynotes.app --project-name choynotes
 
-    - name: Inject Ultimate All-In-One ChoyNotes App Code
+    - name: Inject Ultimate All-In-One ChoyNotes App Code with Notta AI Tab 2
       run: |
         cat << 'EOF' > lib/main.dart
         import 'dart:io';
+        import 'dart:async';
         import 'package:flutter/material.dart';
+        import 'package:speech_to_text/speech_to_text.dart' as stt;
         import 'package:permission_handler/permission_handler.dart';
         import 'package:path_provider/path_provider.dart';
-        import 'package:speech_to_text/speech_to_text.dart';
-        import 'package:share_plus/share_plus.dart';
-        import 'package:intl/intl.dart';
-        import 'package:pdf/pdf.dart';
-        import 'package:pdf/widgets.dart' as pw;
-        import 'package:printing/printing.dart';
+        import 'package:google_generative_ai/google_generative_ai.dart';
 
         void main() {
           runApp(const ChoyNotesApp());
@@ -58,7 +55,7 @@ jobs:
         }
 
         class _ChoyNotesAppState extends State<ChoyNotesApp> {
-          bool _isDarkMode = false;
+          bool _isDarkMode = true;
 
           void toggleTheme() {
             setState(() {
@@ -103,619 +100,451 @@ jobs:
         }
 
         class _HomeScreenState extends State<HomeScreen> {
-          final SpeechToText _speechToText = SpeechToText();
+          late stt.SpeechToText _speech;
+          bool _isListening = false;
+          bool _shouldBeListening = false;
+
           final TextEditingController _textController = TextEditingController();
           final TextEditingController _searchController = TextEditingController();
-          
-          bool _isListening = false;
-          List<String> _savedNotes = [];
-          List<String> _filteredNotes = [];
-          int? _editingIndex; 
-          bool _shouldBeListening = false; 
-          
+          final TextEditingController _aiQueryController = TextEditingController();
+
+          String _finalizedText = "";
+          String _interimText = "";
+          String _aiResponse = "";
+          bool _isAiLoading = false;
+
           String _selectedCategory = 'General';
           final List<String> _categories = ['General', 'School', 'Work', 'Personal'];
+          List<Map<String, String>> _savedNotes = [];
+          List<Map<String, String>> _filteredNotes = [];
+
+          // ⚠️ Pwede mo itong palitan ng iyong Gemini API Key bukas paggising mo
+          final String _geminiApiKey = "PALITAN_ITO_NG_IYONG_API_KEY";
 
           @override
           void initState() {
             super.initState();
-            _initSpeech();
+            _speech = stt.SpeechToText();
             _loadNotes();
-            _textController.text = "Tap the microphone below and speak to transcribe...";
-            _searchController.addListener(_filterNotesList);
+            _searchController.addListener(_filterNotes);
+          }
+
+          void _filterNotes() {
+            String query = _searchController.text.toLowerCase();
+            setState(() {
+              if (query.isEmpty) {
+                _filteredNotes = List.from(_savedNotes);
+              } else {
+                _filteredNotes = _savedNotes.where((note) {
+                  return (note['text'] ?? '').toLowerCase().contains(query);
+                }).toList();
+              }
+            });
+          }
+
+          void _askAI(String contextText, String userQuestion) async {
+            if (_geminiApiKey == "PALITAN_ITO_NG_IYONG_API_KEY" || _geminiApiKey.isEmpty) {
+              setState(() {
+                _aiResponse = "Pakilagay muna ang iyong Gemini API Key sa code bukas.";
+              });
+              return;
+            }
+            if (contextText.isEmpty) {
+              setState(() {
+                _aiResponse = "Walang nakasulat na text na pwedeng suriin ng AI.";
+              });
+              return;
+            }
+
+            setState(() {
+              _isAiLoading = true;
+              _aiResponse = "Nag-iisip ang AI...";
+            });
+
+            try {
+              final model = GenerativeModel(model: 'gemini-1.5-flash', apiKey: _geminiApiKey);
+              final prompt = "Ito ang aking note o transkripsyon:\n$contextText\n\nBatay sa note sa itaas, sagutin ang tanong: $userQuestion";
+              final content = [Content.text(prompt)];
+              final response = await model.generateContent(content);
+              setState(() {
+                _aiResponse = response.text ?? "Walang sagot mula sa AI.";
+              });
+            } catch (e) {
+              setState(() {
+                _aiResponse = "Error sa AI: $e";
+              });
+            } finally {
+              setState(() {
+                _isAiLoading = false;
+              });
+            }
+          }
+
+          void _initAndStartSpeech() async {
+            bool available = await _speech.initialize(
+              onError: (val) {
+                if (_shouldBeListening) _startListeningLoop();
+              },
+              onStatus: (status) {
+                if (status == 'notListening' && _shouldBeListening) {
+                  if (_interimText.isNotEmpty) {
+                    _finalizedText = "$_finalizedText $_interimText".trim();
+                    _interimText = "";
+                  }
+                  _startListeningLoop();
+                }
+              },
+            );
+
+            if (available) {
+              setState(() {
+                _isListening = true;
+                _shouldBeListening = true;
+              });
+              _startListeningLoop();
+            }
+          }
+
+          void _startListeningLoop() async {
+            if (!_shouldBeListening) return;
+            await _speech.listen(
+              onResult: (val) {
+                setState(() {
+                  _interimText = val.recognizedWords;
+                  _textController.text = _finalizedText.isEmpty ? _interimText : "$_finalizedText $_interimText";
+                  _textController.selection = TextSelection.fromPosition(TextPosition(offset: _textController.text.length));
+                });
+              },
+              listenFor: const Duration(hours: 1),
+              pauseFor: const Duration(seconds: 4),
+              partialResults: true,
+              listenMode: stt.ListenMode.dictation,
+            );
+          }
+
+          void _listen() async {
+            if (!_isListening) {
+              var status = await Permission.microphone.request();
+              if (status.isGranted) {
+                _textController.clear();
+                _finalizedText = "";
+                _interimText = "";
+                _initAndStartSpeech();
+              }
+            } else {
+              setState(() {
+                _isListening = false;
+                _shouldBeListening = false;
+                if (_interimText.isNotEmpty) _finalizedText = "$_finalizedText $_interimText".trim();
+                _textController.text = _finalizedText;
+              });
+              await _speech.stop();
+            }
+          }
+
+          void _saveNote() async {
+            String txt = _textController.text.trim();
+            if (txt.isEmpty) return;
+
+            setState(() {
+              _savedNotes.insert(0, {
+                'text': txt,
+                'category': _selectedCategory,
+                'date': "${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}"
+              });
+              _filteredNotes = List.from(_savedNotes);
+              _textController.clear();
+              _finalizedText = "";
+              _interimText = "";
+            });
+
+            final directory = await getApplicationDocumentsDirectory();
+            final file = File('${directory.path}/choynotes_pro.txt');
+            List<String> rawLines = _savedNotes.map((n) => "${n['category']}|${n['date']}|${n['text']}").toList();
+            await file.writeAsString(rawLines.join('\n===\n'));
+
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Transcript successfully saved!')),
+            );
+          }
+
+          void _loadNotes() async {
+            try {
+              final directory = await getApplicationDocumentsDirectory();
+              final file = File('${directory.path}/choynotes_pro.txt');
+              if (await file.exists()) {
+                String contents = await file.readAsString();
+                if (contents.trim().isEmpty) return;
+                List<String> blocks = contents.split('\n===\n');
+                List<Map<String, String>> loaded = [];
+                for (var block in blocks) {
+                  var parts = block.split('|');
+                  if (parts.length >= 3) {
+                    loaded.add({'category': parts[0], 'date': parts[1], 'text': parts.sublist(2).join('|')});
+                  }
+                }
+                setState(() {
+                  _savedNotes = loaded;
+                  _filteredNotes = List.from(_savedNotes);
+                });
+              }
+            } catch (e) {
+              print(e);
+            }
           }
 
           @override
           void dispose() {
             _textController.dispose();
             _searchController.dispose();
+            _aiQueryController.dispose();
             super.dispose();
-          }
-
-          void _initSpeech() async {
-            try {
-              await _speechToText.initialize(
-                onError: (error) {
-                  if (_shouldBeListening && !error.errorMsg.contains('error_client')) {
-                    _restartListeningLoop();
-                  }
-                },
-                onStatus: (status) {
-                  if (status == 'notListening' && _shouldBeListening) {
-                    _restartListeningLoop();
-                  }
-                },
-              );
-            } catch (e) {
-              debugPrint("Speech init error: $e");
-            }
-          }
-
-          void _startListening() async {
-            var status = await Permission.microphone.request();
-            if (status.isGranted) {
-              bool available = await _speechToText.initialize();
-              if (available) {
-                setState(() {
-                  _isListening = true;
-                  _shouldBeListening = true;
-                  if (_textController.text.startsWith("Tap the microphone")) {
-                    _textController.clear();
-                  }
-                });
-                _executeListeningEngine();
-              }
-            } else {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Microphone permission required.')),
-              );
-            }
-          }
-
-          void _executeListeningEngine() async {
-            if (!_shouldBeListening) return;
-            await _speechToText.listen(
-              onResult: (result) {
-                setState(() {
-                  _textController.text = result.recognizedWords;
-                });
-              },
-              listenFor: const Duration(hours: 1),
-              pauseFor: const Duration(minutes: 10),
-              listenOptions: SpeechListenOptions(partialResults: true, cancelOnError: false),
-            );
-          }
-
-          void _restartListeningLoop() async {
-            if (!_shouldBeListening) return;
-            await Future.delayed(const Duration(milliseconds: 300));
-            _executeListeningEngine();
-          }
-
-          void _stopListening() async {
-            setState(() {
-              _shouldBeListening = false;
-              _isListening = false;
-            });
-            await _speechToText.stop();
-          }
-
-          void _saveNote() async {
-            final text = _textController.text.trim();
-            if (text.isEmpty || text.startsWith("Tap the microphone")) return;
-
-            final String timestamp = DateFormat('MMM dd, yyyy • hh:mm a').format(DateTime.now());
-            final String formattedNote = "$timestamp===$_selectedCategory===$text";
-
-            setState(() {
-              if (_editingIndex != null) {
-                int trueIndex = _savedNotes.indexOf(_filteredNotes[_editingIndex!]);
-                if (trueIndex != -1) _savedNotes[trueIndex] = formattedNote;
-                _editingIndex = null;
-              } else {
-                _savedNotes.insert(0, formattedNote);
-              }
-              _textController.text = "Tap the microphone below and speak to transcribe...";
-              _filterNotesList();
-            });
-
-            await _saveToStorage();
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Transcript successfully saved!'), backgroundColor: Color(0xFF10B981)),
-            );
-          }
-
-          void _startEditing(int index, String currentText, String currentCat) {
-            setState(() {
-              _editingIndex = index;
-              _textController.text = currentText;
-              if (_categories.contains(currentCat)) _selectedCategory = currentCat;
-            });
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Loaded into editor.'), backgroundColor: Color(0xFF3B82F6)),
-            );
-          }
-
-          Future<void> _saveToStorage() async {
-            final directory = await getApplicationDocumentsDirectory();
-            final file = File('${directory.path}/choynotes_v2.txt');
-            await file.writeAsString(_savedNotes.join('\n---\n'));
-          }
-
-          void _loadNotes() async {
-            try {
-              final directory = await getApplicationDocumentsDirectory();
-              final file = File('${directory.path}/choynotes_v2.txt');
-              if (await file.exists()) {
-                String contents = await file.readAsString();
-                setState(() {
-                  _savedNotes = contents.split('\n---\n').where((s) => s.trim().isNotEmpty).toList();
-                  _filteredNotes = List.from(_savedNotes);
-                });
-              }
-            } catch (e) {
-              debugPrint("Error loading notes: $e");
-            }
-          }
-
-          void _filterNotesList() {
-            final query = _searchController.text.toLowerCase();
-            setState(() {
-              if (query.isEmpty) {
-                _filteredNotes = List.from(_savedNotes);
-              } else {
-                _filteredNotes = _savedNotes.where((note) {
-                  return note.toLowerCase().contains(query);
-                }).toList();
-              }
-            });
-          }
-
-          void _deleteNote(int index) async {
-            setState(() {
-              String target = _filteredNotes[index];
-              _savedNotes.remove(target);
-              if (_editingIndex == index) _editingIndex = null;
-              _filterNotesList();
-            });
-            await _saveToStorage();
-          }
-
-          void _generatePDF(String date, String category, String text) async {
-            final pdf = pw.Document();
-            pdf.addPage(
-              pw.Page(
-                pageFormat: PdfPageFormat.a4,
-                build: (pw.Context context) {
-                  return pw.Padding(
-                    padding: const pw.EdgeInsets.all(24),
-                    child: pw.Column(
-                      crossAxisAlignment: pw.CrossAxisAlignment.start,
-                      children: [
-                        pw.Text('ChoyNotes Pro Document Report', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
-                        pw.Divider(),
-                        pw.SizedBox(height: 10),
-                        pw.Text('Date: $date', style: const pw.TextStyle(fontSize: 12)),
-                        pw.Text('Category: $category', style: const pw.TextStyle(fontSize: 12)),
-                        pw.SizedBox(height: 20),
-                        pw.Text(text, style: const pw.TextStyle(fontSize: 14)),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            );
-            await Printing.layoutPdf(onLayout: (PdfPageFormat format) async => pdf.save());
-          }
-
-          void _showAISummary(String fullText) {
-            List<String> sentences = fullText.split(RegExp(r'(?<=[.!?])\s+'));
-            List<String> summaryPoints = [];
-            
-            for (var sentence in sentences) {
-              if (sentence.trim().length > 15 && summaryPoints.length < 3) {
-                summaryPoints.add("• ${sentence.trim()}");
-              }
-            }
-
-            if (summaryPoints.isEmpty) {
-              summaryPoints.add("• Context is too brief to isolate key operational points.");
-            }
-
-            showDialog(
-              context: context,
-              builder: (context) => AlertDialog(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                title: const Row(
-                  children: [
-                    Icon(Icons.auto_awesome, color: Colors.purpleAccent),
-                    SizedBox(width: 8),
-                    Text('AI Quick Summary', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  ],
-                ),
-                content: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: summaryPoints.map((pt) => Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4.0),
-                    child: Text(pt, style: const TextStyle(fontSize: 14, height: 1.4)),
-                  )).toList(),
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Got It', style: TextStyle(fontWeight: FontWeight.bold)),
-                  )
-                ],
-              ),
-            );
-          }
-
-          void _openNote(int index, String date, String category, String text) {
-            showDialog(
-              context: context,
-              builder: (context) => AlertDialog(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                title: Row(
-                  children: [
-                    const Icon(Icons.description, color: Color(0xFF3B82F6)),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text("$category\n$date", style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                    ),
-                  ],
-                ),
-                content: SingleChildScrollView(
-                  child: Text(text, style: const TextStyle(fontSize: 15, height: 1.5)),
-                ),
-                actions: [
-                  IconButton(
-                    icon: const Icon(Icons.auto_awesome, color: Colors.purpleAccent),
-                    tooltip: 'AI Summary',
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _showAISummary(text);
-                    },
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.picture_as_pdf, color: Colors.redAccent),
-                    tooltip: 'Export PDF',
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _generatePDF(date, category, text);
-                    },
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.edit, color: Colors.amber),
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _startEditing(index, text, category);
-                    },
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.share, color: Colors.blue),
-                    onPressed: () {
-                      Navigator.pop(context);
-                      Share.share(text);
-                    },
-                  ),
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Close'),
-                  ),
-                ],
-              ),
-            );
           }
 
           @override
           Widget build(BuildContext context) {
-            final isDark = widget.isDarkMode;
-            return Scaffold(
-              appBar: AppBar(
-                title: const Text('ChoyNotes Pro', style: TextStyle(fontWeight: FontWeight.w800)),
-                backgroundColor: isDark ? const Color(0xFF1E293B) : const Color(0xFF0F172A),
-                foregroundColor: Colors.white,
-                centerTitle: true,
-                actions: [
-                  IconButton(
-                    icon: Icon(isDark ? Icons.light_mode : Icons.dark_mode),
-                    onPressed: widget.onThemeToggle,
-                  )
-                ],
-              ),
-              body: Column(
-                children: [
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-                    color: isDark ? const Color(0xFF0F172A) : const Color(0xFF1E293B),
-                    child: Center(
+            bool isDark = widget.isDarkMode;
+
+            return DefaultTabController(
+              length: 2,
+              child: Scaffold(
+                appBar: AppBar(
+                  title: const Text('ChoyNotes Pro', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                  centerTitle: true,
+                  elevation: 0,
+                  actions: [
+                    IconButton(
+                      icon: Icon(isDark ? Icons.wb_sunny : Icons.nightlight_round, color: Colors.white),
+                      onPressed: widget.onThemeToggle,
+                    ),
+                  ],
+                  bottom: const TabBar(
+                    labelColor: Colors.blueAccent,
+                    unselectedLabelColor: Colors.white60,
+                    indicatorColor: Colors.blueAccent,
+                    tabs: [
+                      Tab(icon: Icon(Icons.mic, color: Colors.white), text: "Transcribe"),
+                      Tab(icon: Icon(Icons.psychology, color: Colors.white), text: "AI Assistant"),
+                    ],
+                  ),
+                ),
+                body: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(vertical: 8.0),
+                      width: double.infinity,
+                      color: isDark ? const Color(0xFF1E293B) : Colors.grey.shade200,
                       child: Text(
-                        'Program by: Renante Fullo',
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                        "Program by: Renante Fullo",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 14, fontWeight: FontWeight.w500),
                       ),
                     ),
-                  ),
-
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('Select Category:', style: TextStyle(fontWeight: FontWeight.w600)),
-                        DropdownButton<String>(
-                          value: _selectedCategory,
-                          items: _categories.map((String cat) {
-                            return DropdownMenuItem<String>(value: cat, child: Text(cat));
-                          }).toList(),
-                          onChanged: (val) {
-                            if (val != null) setState(() => _selectedCategory = val);
-                          },
-                        )
-                      ],
-                    ),
-                  ),
-
-                  Expanded(
-                    flex: 3,
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      margin: const EdgeInsets.symmetric(horizontal: 16),
-                      decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF1E293B) : Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: _editingIndex != null ? Colors.amber : Colors.grey.shade300),
-                      ),
-                      child: TextField(
-                        controller: _textController,
-                        maxLines: null,
-                        style: TextStyle(fontSize: 16, color: isDark ? Colors.white : Colors.black),
-                        decoration: const InputDecoration(border: InputBorder.none),
-                        onTap: () {
-                          if (_textController.text.startsWith("Tap the microphone")) {
-                            _textController.clear();
-                          }
-                        },
-                      ),
-                    ),
-                  ),
-
-                  Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Row(
-                      children: [
-                        if (_editingIndex != null) ...[
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: () {
-                                setState(() {
-                                  _editingIndex = null;
-                                  _textController.text = "Tap the microphone below and speak to transcribe...";
-                                });
-                              },
-                              style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.red)),
-                              child: const Text('Cancel', style: TextStyle(color: Colors.red)),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                        ],
-                        Expanded(
-                          flex: 2,
-                          child: ElevatedButton.icon(
-                            onPressed: _isListening ? null : _saveNote,
-                            icon: Icon(_editingIndex != null ? Icons.check : Icons.bookmark),
-                            label: Text(_editingIndex != null ? 'Update Note' : 'Save Transcript'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: _editingIndex != null ? Colors.amber.shade700 : const Color(0xFF3B82F6),
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-                    child: TextField(
-                      controller: _searchController,
-                      decoration: InputDecoration(
-                        hintText: 'Search notes...',
-                        prefixIcon: const Icon(Icons.search),
-                        contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        filled: true,
-                        fillColor: isDark ? const Color(0xFF1E293B) : Colors.grey.shade100,
-                      ),
-                    ),
-                  ),
-
-                  Expanded(
-                    flex: 4,
-                    child: _filteredNotes.isEmpty
-                        ? const Center(child: Text('No notes found.', style: TextStyle(color: Colors.grey)))
-                        : ListView.builder(
-                            itemCount: _filteredNotes.length,
-                            itemBuilder: (context, index) {
-                              final parts = _filteredNotes[index].split('===');
-                              String dateText = "Recent";
-                              String categoryText = "General";
-                              String noteContent = _filteredNotes[index];
-
-                              if (parts.length == 3) {
-                                dateText = parts[0];
-                                categoryText = parts[1];
-                                noteContent = parts[2];
-                              } else if (parts.length == 2) {
-                                dateText = parts[0];
-                                noteContent = parts[1];
-                              }
-
-                              return Card(
-                                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                                color: isDark ? const Color(0xFF1E293B) : Colors.white,
-                                child: ListTile(
-                                  title: Text(noteContent, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold)),
-                                  subtitle: Text("$categoryText • $dateText", style: const TextStyle(fontSize: 11)),
-                                  trailing: Row(
-                                    mainAxisSize: MainAxisSize.min,
+                    Expanded(
+                      child: TabBarView(
+                        children: [
+                          // --- TAB 1: TRANSCRIBE ---
+                          SingleChildScrollView(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Column(
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
-                                      IconButton(icon: const Icon(Icons.picture_as_pdf, color: Colors.redAccent, size: 20), onPressed: () => _generatePDF(dateText, categoryText, noteContent)),
-                                      IconButton(icon: const Icon(Icons.delete, color: Colors.red, size: 20), onPressed: () => _deleteNote(index)),
+                                      Text("Select Category:", style: TextStyle(fontSize: 16, color: isDark ? Colors.white : Colors.black87, fontWeight: FontWeight.w500)),
+                                      DropdownButton<String>(
+                                        value: _selectedCategory,
+                                        dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+                                        style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                                        items: _categories.map((String value) {
+                                          return DropdownMenuItem<String>(value: value, child: Text(value));
+                                        }).toList(),
+                                        onChanged: (newValue) => setState(() => _selectedCategory = newValue!),
+                                      ),
                                     ],
                                   ),
-                                  onTap: () => _openNote(index, dateText, categoryText, noteContent),
-                                ),
-                              );
-                            },
+                                  const SizedBox(height: 16),
+                                  Container(
+                                    height: 180,
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      border: Border.all(color: isDark ? Colors.white60 : Colors.black38),
+                                      borderRadius: BorderRadius.circular(16),
+                                      color: isDark ? Colors.transparent : Colors.white,
+                                    ),
+                                    child: TextField(
+                                      controller: _textController,
+                                      maxLines: null,
+                                      readOnly: _isListening,
+                                      style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 16),
+                                      decoration: InputDecoration(
+                                        border: InputBorder.none,
+                                        hintText: "Tap the microphone below and speak to transcribe...",
+                                        hintStyle: TextStyle(color: isDark ? Colors.white38 : Colors.black38),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  SizedBox(
+                                    width: double.infinity,
+                                    height: 50,
+                                    child: ElevatedButton.icon(
+                                      onPressed: _saveNote,
+                                      icon: const Icon(Icons.bookmark, color: Colors.white),
+                                      label: const Text("Save Transcript", style: TextStyle(fontSize: 16, color: Colors.white)),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(0xFF3B82F6),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  TextField(
+                                    controller: _searchController,
+                                    style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                                    decoration: InputDecoration(
+                                      prefixIcon: Icon(Icons.search, color: isDark ? Colors.white60 : Colors.black45),
+                                      hintText: "Search notes...",
+                                      hintStyle: TextStyle(color: isDark ? Colors.white38 : Colors.black38),
+                                      fillColor: isDark ? Colors.transparent : Colors.white,
+                                      filled: true,
+                                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: isDark ? Colors.white60 : Colors.black38)),
+                                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.blueAccent)),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 20),
+                                  _filteredNotes.isEmpty
+                                      ? const Padding(padding: EdgeInsets.only(top: 40.0), child: Text("No notes found.", style: TextStyle(color: Colors.grey)))
+                                      : ListView.builder(
+                                          shrinkWrap: true,
+                                          physics: const NeverScrollableScrollPhysics(),
+                                          itemCount: _filteredNotes.length,
+                                          itemBuilder: (context, index) {
+                                            final item = _filteredNotes[index];
+                                            return Card(
+                                              color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                                              child: ListTile(
+                                                title: Text(item['text'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
+                                                subtitle: Text("${item['category']} • ${item['date']}", style: const TextStyle(color: Colors.grey)),
+                                                trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+                                                onTap: () {
+                                                  setState(() {
+                                                    _textController.text = item['text'] ?? '';
+                                                    _finalizedText = item['text'] ?? '';
+                                                    _aiResponse = "Naka-load na ang note. Magpunta sa AI Assistant Tab.";
+                                                  });
+                                                },
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                ],
+                              ),
+                            ),
                           ),
-                  ),
-                  const SizedBox(height: 80),
-                ],
-              ),
-              floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-              floatingActionButton: FloatingActionButton(
-                onPressed: _isListening ? _stopListening : _startListening,
-                backgroundColor: _isListening ? Colors.red : const Color(0xFF0F172A),
-                shape: const CircleBorder(),
-                child: Icon(_isListening ? Icons.stop : Icons.mic, color: Colors.white),
+
+                          // --- TAB 2: AI ASSISTANT ---
+                          Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              children: [
+                                Expanded(
+                                  child: Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(color: isDark ? const Color(0xFF1E293B) : Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade300)),
+                                    child: SingleChildScrollView(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const Text("Sagot ng AI:", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent, fontSize: 16)),
+                                          const Divider(),
+                                          _isAiLoading 
+                                            ? const Center(child: Padding(padding: EdgeInsets.only(top: 20), child: CircularProgressIndicator()))
+                                            : Text(_aiResponse.isEmpty ? "Pumili ng note o mag-transcribe muna, tapos magtanong ka rito." : _aiResponse, style: TextStyle(fontSize: 15, color: isDark ? Colors.white : Colors.black87, height: 1.5)),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                  children: [
+                                    ElevatedButton.icon(onPressed: () => _askAI(_textController.text, "Ibigay ang buod ng text na ito sa maiikling bullet points."), icon: const Icon(Icons.summarize), label: const Text("I-Summary")),
+                                    ElevatedButton.icon(onPressed: () => _askAI(_textController.text, "Ano ang mahahalagang Action Items dito?"), icon: const Icon(Icons.task_alt), label: const Text("Action Items")),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: TextField(
+                                        controller: _aiQueryController,
+                                        style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                                        decoration: InputDecoration(
+                                          hintText: "Magtanong sa AI...",
+                                          hintStyle: const TextStyle(color: Colors.grey),
+                                          fillColor: isDark ? const Color(0xFF0F172A) : Colors.grey.shade200,
+                                          filled: true,
+                                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
+                                          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    IconButton(
+                                      icon: const Icon(Icons.send, color: Colors.blueAccent),
+                                      onPressed: () {
+                                        if (_aiQueryController.text.trim().isNotEmpty) {
+                                          _askAI(_textController.text, _aiQueryController.text.trim());
+                                          _aiQueryController.clear();
+                                        }
+                                      },
+                                    )
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.only(bottom: 24),
+                      child: Center(
+                        child: GestureDetector(
+                          onTap: _listen,
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: _isListening ? Colors.red : const Color(0xFF0F172A),
+                              shape: BoxShape.circle,
+                              boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 4))],
+                            ),
+                            child: Icon(_isListening ? Icons.stop : Icons.mic, size: 30, color: Colors.white),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             );
           }
         }
         EOF
 
-    - name: Inject Upgraded pubspec.yaml with PDF and Utilities
+    - name: Inject Packages into pubspec.yaml
       run: |
-        cat << 'EOF' > pubspec.yaml
-        name: choynotes
-        description: "An AI-powered meeting recorder app."
-        publish_to: 'none'
-        version: 1.0.0+1
+        flutter pub add permission_handler path_provider speech_to_text google_generative_ai
 
-        environment:
-          sdk: '>=3.0.0 <4.0.0'
-
-        dependencies:
-          flutter:
-            sdk: flutter
-          cupertino_icons: ^1.0.6
-          permission_handler: ^11.3.1
-          path_provider: ^2.1.3
-          speech_to_text: ^7.4.0
-          share_plus: ^7.2.1
-          intl: ^0.19.0
-          pdf: ^3.10.8
-          printing: ^5.11.1
-
-        dev_dependencies:
-          flutter_test:
-            sdk: flutter
-          flutter_lints: ^3.0.0
-          flutter_launcher_icons: ^0.13.1
-
-        flutter:
-          uses-material-design: true
-
-        flutter_launcher_icons:
-          android: "launcher_icon"
-          image_path: "app_icon.png"
-        EOF
-
-    - name: Configure Modern Manifest for Voice Speech Queries
-      run: |
-        cat << 'EOF' > android/app/src/main/AndroidManifest.xml
-        <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-            <uses-permission android:name="android.permission.RECORD_AUDIO" />
-            <uses-permission android:name="android.permission.INTERNET" />
-            
-            <queries>
-                <intent>
-                    <action android:name="android.speech.RecognitionService" />
-                </intent>
-            </queries>
-
-            <application
-                android:label="ChoyNotes"
-                android:name="${applicationName}"
-                android:icon="@mipmap/launcher_icon">
-                <activity
-                    android:name=".MainActivity"
-                    android:exported="true"
-                    android:launchMode="singleTop"
-                    android:theme="@style/LaunchTheme"
-                    android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
-                    android:hardwareAccelerated="true"
-                    android:windowSoftInputMode="adjustResize">
-                    <meta-data
-                      android:name="io.flutter.embedding.android.NormalTheme"
-                      android:resource="@style/NormalTheme"
-                      />
-                    <intent-filter>
-                        <action android:name="android.intent.action.MAIN"/>
-                        <category android:name="android.intent.category.LAUNCHER"/>
-                    </intent-filter>
-                </activity>
-                <meta-data
-                    android:name="flutterEmbedding"
-                    android:value="2" />
-            </application>
-        </manifest>
-        EOF
-
-    - name: Force Global Subprojects SDK Overrides
-      run: |
-        cat << 'EOF' >> android/build.gradle
-
-        subprojects {
-            afterEvaluate { project ->
-                if (project.hasProperty('android')) {
-                    project.android {
-                        compileSdkVersion 34
-                        defaultConfig {
-                            targetSdkVersion 34
-                        }
-                    }
-                }
-            }
-        }
-        EOF
-
-    - name: Patch Native Script Injection for Modern Android App Builds
-      run: |
-        if [ -f "android/app/build.gradle" ]; then
-          sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 34/g' android/app/build.gradle
-          sed -i 's/targetSdkVersion flutter.targetSdkVersion/targetSdkVersion 34/g' android/app/build.gradle
-          sed -i '/android {/a \    namespace "com.choynotes.app"' android/app/build.gradle
-        elif [ -f "android/app/build.gradle.kts" ]; then
-          sed -i 's/compileSdk = .*/compileSdk = 34/g' android/app/build.gradle.kts
-          sed -i 's/targetSdk = .*/targetSdk = 34/g' android/app/build.gradle.kts
-          sed -i '/android {/a \    namespace = "com.choynotes.app"' android/app/build.gradle.kts
-        fi
-
-    - name: Fetch Flutter Dependencies
-      run: flutter pub get
-
-    - name: Patch Third-Party Repositories (Fix JCenter Errors)
-      run: |
-        find ~/.pub-cache/hosted/pub.dev/speech_to_text-* -name "build.gradle" -exec sed -i 's/jcenter()/mavenCentral()/g' {} + || true
-
-    - name: Generate Custom Launcher Icons
-      run: flutter pub run flutter_launcher_icons
-
-    - name: Build Assets and Plugins First
-      run: flutter build bundle
-
-    - name: Direct Native Gradle Build AssembleRelease
-      run: |
-        cd android
-        chmod +x gradlew
-        ./gradlew assembleRelease
+    - name: Build APK
+      run: flutter build apk --release
 
     - name: Upload APK Artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/artifacts-upload@v4
       with:
-        name: ChoyNotes-Release-APK
-        path: android/app/build/outputs/apk/release/app-release.apk
+        name: choynotes-pro-apk
+        path: build/app/outputs/flutter-apk/app-release.apk
