@@ -205,12 +205,10 @@ jobs:
             if (text.isEmpty || text.startsWith("Tap the microphone")) return;
 
             final String timestamp = DateFormat('MMM dd, yyyy • hh:mm a').format(DateTime.now());
-            // Format: Data === Category === Text
             final String formattedNote = "$timestamp===$_selectedCategory===$text";
 
             setState(() {
               if (_editingIndex != null) {
-                // Kunin ang base index mula sa filtered view
                 int trueIndex = _savedNotes.indexOf(_filteredNotes[_editingIndex!]);
                 if (trueIndex != -1) _savedNotes[trueIndex] = formattedNote;
                 _editingIndex = null;
@@ -300,7 +298,7 @@ jobs:
                         pw.Text('Date: $date', style: const pw.TextStyle(fontSize: 12)),
                         pw.Text('Category: $category', style: const pw.TextStyle(fontSize: 12)),
                         pw.SizedBox(height: 20),
-                        pw.Text(text, style: const pw.TextStyle(fontSize: 14, lineHeight: 1.5)),
+                        pw.Text(text, style: const pw.TextStyle(fontSize: 14)),
                       ],
                     ),
                   );
@@ -311,7 +309,6 @@ jobs:
           }
 
           void _showAISummary(String fullText) {
-            // Localized regex and word frequency parsing algorithm for dynamic extractive summarization
             List<String> sentences = fullText.split(RegExp(r'(?<=[.!?])\s+'));
             List<String> summaryPoints = [];
             
@@ -338,7 +335,7 @@ jobs:
                 ),
                 content: Column(
                   mainAxisSize: MainAxisSize.min,
-                  crossinit: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: summaryPoints.map((pt) => Padding(
                     padding: const EdgeInsets.symmetric(vertical: 4.0),
                     child: Text(pt, style: const TextStyle(fontSize: 14, height: 1.4)),
@@ -429,7 +426,6 @@ jobs:
               ),
               body: Column(
                 children: [
-                  // Architect banner
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
@@ -442,7 +438,6 @@ jobs:
                     ),
                   ),
 
-                  // Category Selector row
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                     child: Row(
@@ -462,7 +457,6 @@ jobs:
                     ),
                   ),
 
-                  // Main Text Editor Box
                   Expanded(
                     flex: 3,
                     child: Container(
@@ -487,7 +481,6 @@ jobs:
                     ),
                   ),
 
-                  // Action Button
                   Padding(
                     padding: const EdgeInsets.all(16.0),
                     child: Row(
@@ -524,7 +517,6 @@ jobs:
                     ),
                   ),
 
-                  // Search Bar Input Section
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
                     child: TextField(
@@ -540,7 +532,6 @@ jobs:
                     ),
                   ),
 
-                  // List View of Transcripts
                   Expanded(
                     flex: 4,
                     child: _filteredNotes.isEmpty
