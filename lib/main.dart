@@ -1,8 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:path_provider/path_provider.dart';
-import 'import 'dart:io';
 
 void main() {
   runApp(const ChoyNotesApp());
@@ -15,8 +15,9 @@ class ChoyNotesApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'ChoyNotes',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        primarySwatch: Colors.blue,
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueAccent),
         useMaterialDesign: true,
       ),
       home: const HomeScreen(),
@@ -60,6 +61,10 @@ class _HomeScreenState extends State<HomeScreen> {
             }),
           );
         }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Kailangan ng permiso sa Mic para mag-record.')),
+        );
       }
     } else {
       setState(() => _isListening = false);
@@ -89,7 +94,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (await file.exists()) {
         String contents = await file.readAsString();
         setState(() {
-          _savedNotes = contents.split('\n---\n');
+          _savedNotes = contents.split('\n---\n').where((s) => s.trim().isNotEmpty).toList();
         });
       }
     } catch (e) {
@@ -101,19 +106,21 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('ChoyNotes - AI Recorder'),
+        title: const Text('ChoyNotes - AI Recorder', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.blueAccent,
         foregroundColor: Colors.white,
+        centerTitle: true,
       ),
       body: Column(
         children: [
           Expanded(
-            flex: 2,
+            flex: 3,
             child: Container(
               padding: const EdgeInsets.all(16),
               margin: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                border: Border.all(color: Colors.blueAccent),
+                color: Colors.grey[100],
+                border: Border.all(color: Colors.blueAccent.withOpacity(0.5)),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: SingleChildScrollView(
@@ -124,39 +131,55 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-          ElevatedButton.icon(
-            onPressed: _saveNote,
-            icon: const Icon(Icons.save),
-            label: const Text('I-save ang Note'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton.icon(
+                onPressed: _saveNote,
+                icon: const Icon(Icons.save),
+                label: const Text('I-save ang Note', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
             ),
           ),
+          const SizedBox(height: 10),
           const Divider(),
-          const Text('Mga Na-save na Notes:', style: TextStyle(fontWeight: FontWeight.bold)),
-          Expanded(
-            flex: 2,
-            child: ListView.builder(
-              itemCount: _savedNotes.length,
-              itemBuilder: (context, index) {
-                return Card(
-                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                  child: ListTile(
-                    title: Text(_savedNotes[index]),
-                    leading: const Icon(Icons.note, color: Colors.blue),
-                  ),
-                );
-              },
-            ),
+          const Padding(
+            padding: EdgeInsets.all(8.0),
+            child: Text('Mga Na-save na Notes:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           ),
+          Expanded(
+            flex: 3,
+            child: _savedNotes.isEmpty
+                ? const Center(child: Text('Wala pang na-save na notes.', style: TextStyle(color: Colors.grey)))
+                : ListView.builder(
+                    itemCount: _savedNotes.length,
+                    itemBuilder: (context, index) {
+                      return Card(
+                        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                        elevation: 2,
+                        child: ListTile(
+                          title: Text(_savedNotes[index]),
+                          leading: const Icon(Icons.note, color: Colors.blueAccent),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+          const SizedBox(height: 80),
         ],
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.large(
         onPressed: _listen,
-        backgroundColor: _isListening ? Colors.red : Colors.blue,
-        child: Icon(_isListening ? Icons.mic : Icons.mic_none, color: Colors.white),
+        backgroundColor: _isListening ? Colors.red : Colors.blueAccent,
+        child: Icon(_isListening ? Icons.mic : Icons.mic_none, color: Colors.white, size: 36),
       ),
     );
   }
