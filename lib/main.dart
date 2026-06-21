@@ -1,36 +1,56 @@
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:permission_handler/permission_handler.dart';
 
-void main() => runApp(MeetingNotesApp());
+void main() {
+  runApp(const ChoyNotesApp());
+}
 
-class MeetingNotesApp extends StatelessWidget {
+class ChoyNotesApp extends StatelessWidget {
+  const ChoyNotesApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      home: MeetingRecorderScreen(),
+      title: 'ChoyNotes',
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+        useMaterial3: true,
+      ),
+      home: const MeetingRecorderScreen(),
     );
   }
 }
 
 class MeetingRecorderScreen extends StatefulWidget {
+  const MeetingRecorderScreen({super.key});
+
   @override
-  _MeetingRecorderScreenState createState() => _MeetingRecorderScreenState();
+  State<MeetingRecorderScreen> createState() => _MeetingRecorderScreenState();
 }
 
 class _MeetingRecorderScreenState extends State<MeetingRecorderScreen> {
-  stt.SpeechToText _speech;
+  late stt.SpeechToText _speech;
   bool _isListening = false;
-  String _text = "Pindutin ang mic para magsimulang mag-record...";
+  String _text = "Pindutin ang Mic sa ibaba para magsimulang mag-record ng meeting...";
 
   @override
   void initState() {
     super.initState();
     _speech = stt.SpeechToText();
+    _requestPermission();
+  }
+
+  void _requestPermission() async {
+    await Permission.microphone.request();
   }
 
   void _listen() async {
     if (!_isListening) {
-      bool available = await _speech.initialize();
+      bool available = await _speech.initialize(
+        onStatus: (val) => print('onStatus: $val'),
+        onError: (val) => print('onError: $val'),
+      );
       if (available) {
         setState(() => _isListening = true);
         _speech.listen(
@@ -48,41 +68,57 @@ class _MeetingRecorderScreenState extends State<MeetingRecorderScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Meeting Auto-Notes')),
+      appBar: AppBar(
+        title: const Text('ChoyNotes 🎙️'),
+        backgroundColor: Colors.blue[700],
+        foregroundColor: Colors.white,
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
             Expanded(
               child: Container(
-                padding: EdgeInsets.all(12),
-                border: Border.all(color: Colors.grey),
-                child: TextField(
-                  maxLines: null,
-                  controller: TextEditingController(text: _text),
-                  onChanged: (value) => _text = value,
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade400),
+                  borderRadius: BorderRadius.circular(12),
+                  color: Colors.grey.shade50,
+                ),
+                child: SingleChildScrollView(
+                  child: Text(
+                    _text,
+                    style: const TextStyle(fontSize: 18, color: Colors.black87),
+                  ),
                 ),
               ),
             ),
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                ElevatedButton(
+                FloatingActionButton.extended(
                   onPressed: _listen,
-                  child: Text(_isListening ? 'I-stop ang Record' : 'Magsimula Mag-record'),
+                  label: Text(_isListening ? 'Listening...' : 'Record Meeting'),
+                  icon: Icon(_isListening ? Icons.mic : Icons.mic_none),
+                  backgroundColor: _isListening ? Colors.red : Colors.blue,
                 ),
-                ElevatedButton(
+                ElevatedButton.icon(
                   onPressed: () {
-                    // Code para i-save sa database o file
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Na-save na ang notes!')),
+                      const SnackBar(content: Text('Saved to ChoyNotes History!')),
                     );
                   },
-                  child: Text('I-save ang Notes'),
+                  icon: const Icon(Icons.save),
+                  label: const Text('Save Note'),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  ),
                 ),
               ],
-            )
+            ),
+            const SizedBox(height: 10),
           ],
         ),
       ),
