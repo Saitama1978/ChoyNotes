@@ -432,7 +432,7 @@ jobs:
                     color: isDark ? const Color(0xFF0F172A) : const Color(0xFF1E293B),
                     child: Center(
                       child: Text(
-                        'Architected by: Renante Fullo',
+                        'Program by: Renante Fullo',
                         style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
                       ),
                     ),
