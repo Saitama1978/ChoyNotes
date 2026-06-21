@@ -1,38 +1,35 @@
-
----
-
-### 💻 Ang Upgraded "Notta AI" Style Code (`main.dart`)
-
-Ito ang upgraded code kung saan may hiwalay na **AI Tab** para sa Chat/Q&A sa iyong transkripsyon. I-paste ito sa iyong `lib/main.dart`:
-
-```dart
 import 'dart:io';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:path_provider/path_provider.dart';
-// I-import ang opisyal na Google Gemini SDK
-import 'package:google_generative_ai/google_generative_ai.dart'; 
+import 'package:google_generative_ai/google_generative_ai.dart';
 
 void main() {
   runApp(const ChoyNotesApp());
 }
 
-class ChoyNotesApp extends StatelessWidget {
+class ChoyNotesApp extends StatefulWidget {
   const ChoyNotesApp({super.key});
 
   @override
+  State<ChoyNotesApp> createState() => _ChoyNotesAppState();
+}
+
+class _ChoyNotesAppState extends State<ChoyNotesApp> {
+  @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'ChoyNotes AI Pro',
+      title: 'ChoyNotes Pro',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF1A73E8), // Notta Blue
-          background: const Color(0xFFF8F9FA),
-        ),
         useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF0F172A),
+          brightness: Brightness.dark, // Pinanatiling Dark Mode gaya ng screenshot mo
+        ),
+        scaffoldBackgroundColor: const Color(0xFF0F172A),
       ),
       home: const HomeScreen(),
     );
@@ -50,18 +47,20 @@ class _HomeScreenState extends State<HomeScreen> {
   late stt.SpeechToText _speech;
   bool _isListening = false;
   bool _shouldBeListening = false;
-  
+
   final TextEditingController _textController = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
   final TextEditingController _aiQueryController = TextEditingController();
-  
-  String _finalizedText = ""; 
-  String _interimText = "";   
-  String _aiResponse = ""; // Dito lalabas ang sagot ng AI
+
+  String _finalizedText = "";
+  String _interimText = "";
+  String _aiResponse = "";
   bool _isAiLoading = false;
 
-  List<Map<String, String>> _savedNotes = []; 
-  Timer? _recordingTimer;
-  int _secondsRecorded = 0;
+  String _selectedCategory = 'General';
+  final List<String> _categories = ['General', 'School', 'Work', 'Personal'];
+  List<Map<String, String>> _savedNotes = [];
+  List<Map<String, String>> _filteredNotes = [];
 
   // ⚠️ ILAGAY ANG IYONG GEMINI API KEY DITO
   final String _geminiApiKey = "PALITAN_ITO_NG_IYONG_API_KEY";
@@ -71,9 +70,23 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _speech = stt.SpeechToText();
     _loadNotes();
+    _searchController.addListener(_filterNotes);
   }
 
-  // --- AI LOGIC (ASK GEMINI) ---
+  void _filterNotes() {
+    String query = _searchController.text.toLowerCase();
+    setState(() {
+      if (query.isEmpty) {
+        _filteredNotes = List.from(_savedNotes);
+      } else {
+        _filteredNotes = _savedNotes.where((note) {
+          return (note['text'] ?? '').toLowerCase().contains(query);
+        }).toList();
+      }
+    });
+  }
+
+  // --- AI LOGIC ---
   void _askAI(String contextText, String userQuestion) async {
     if (_geminiApiKey == "PALITAN_ITO_NG_IYONG_API_KEY" || _geminiApiKey.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -81,7 +94,6 @@ class _HomeScreenState extends State<HomeScreen> {
       );
       return;
     }
-
     if (contextText.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Walang text o transkripsyon na pwedeng suriin ang AI.')),
@@ -95,30 +107,26 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     try {
-      // Gagamit tayo ng pinakabagong mabilis at matalinong model ng Google
       final model = GenerativeModel(model: 'gemini-1.5-flash', apiKey: _geminiApiKey);
-      
-      // Gagawa tayo ng "System Prompt" para utusan ang AI kung paano sasagutin ang note mo
       final prompt = """
 Ikaw ay si ChoyNotes AI, isang matalinong katulong sa transkripsyon. 
-Ito ang nilalaman ng aking note o transkripsyon:
+Ito ang nilalaman ng aking note:
 \"\"\"
 $contextText
 \"\"\"
 
-Batay sa transkripsyon sa itaas, sagutin ang tanong na ito ng user nang malinaw at direkta sa Tagalog/English:
+Batay sa transkripsyon sa itaas, sagutin ang tanong ng user sa Tagalog/English:
 $userQuestion
 """;
 
       final content = [Content.text(prompt)];
       final response = await model.generateContent(content);
-
       setState(() {
         _aiResponse = response.text ?? "Paumanhin, hindi ko nakuha ang sagot.";
       });
     } catch (e) {
       setState(() {
-        _aiResponse = "Nagkaroon ng error sa pagkonekta sa AI: $e";
+        _aiResponse = "Error sa AI: $e";
       });
     } finally {
       setState(() {
@@ -127,20 +135,7 @@ $userQuestion
     }
   }
 
-  // --- COPIED NOTTA RECORDER LOGIC ---
-  void _startTimer() {
-    _secondsRecorded = 0;
-    _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      setState(() => _secondsRecorded++);
-    });
-  }
-
-  String _formatDuration(int totalSeconds) {
-    int minutes = totalSeconds ~/ 60;
-    int seconds = totalSeconds % 60;
-    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
-  }
-
+  // --- NOTTA CONTINUOUS SPEECH LOGIC ---
   void _initAndStartSpeech() async {
     bool available = await _speech.initialize(
       onError: (val) {
@@ -162,7 +157,6 @@ $userQuestion
         _isListening = true;
         _shouldBeListening = true;
       });
-      _startTimer();
       _startListeningLoop();
     }
   }
@@ -194,7 +188,6 @@ $userQuestion
         _initAndStartSpeech();
       }
     } else {
-      _recordingTimer?.cancel();
       setState(() {
         _isListening = false;
         _shouldBeListening = false;
@@ -202,29 +195,39 @@ $userQuestion
         _textController.text = _finalizedText;
       });
       await _speech.stop();
-      if (_textController.text.trim().isNotEmpty) _saveNote();
     }
   }
 
   void _saveNote() async {
     String txt = _textController.text.trim();
     if (txt.isEmpty) return;
-    String timestamp = "${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year} ${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}";
-    String durationStr = _formatDuration(_secondsRecorded == 0 ? 5 : _secondsRecorded);
 
     setState(() {
-      _savedNotes.insert(0, {'text': txt, 'date': timestamp, 'duration': durationStr});
+      _savedNotes.insert(0, {
+        'text': txt,
+        'category': _selectedCategory,
+        'date': "${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}"
+      });
+      _filteredNotes = List.from(_savedNotes);
+      _textController.clear();
+      _finalizedText = "";
+      _interimText = "";
     });
+
     final directory = await getApplicationDocumentsDirectory();
-    final file = File('${directory.path}/notta_notes.txt');
-    List<String> rawLines = _savedNotes.map((n) => "${n['date']}|${n['duration']}|${n['text']}").toList();
+    final file = File('${directory.path}/choynotes_pro.txt');
+    List<String> rawLines = _savedNotes.map((n) => "${n['category']}|${n['date']}|${n['text']}").toList();
     await file.writeAsString(rawLines.join('\n===\n'));
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Na-save na ang iyong note!')),
+    );
   }
 
   void _loadNotes() async {
     try {
       final directory = await getApplicationDocumentsDirectory();
-      final file = File('${directory.path}/notta_notes.txt');
+      final file = File('${directory.path}/choynotes_pro.txt');
       if (await file.exists()) {
         String contents = await file.readAsString();
         if (contents.trim().isEmpty) return;
@@ -233,189 +236,273 @@ $userQuestion
         for (var block in blocks) {
           var parts = block.split('|');
           if (parts.length >= 3) {
-            loaded.add({'date': parts[0], 'duration': parts[1], 'text': parts.sublist(2).join('|')});
+            loaded.add({'category': parts[0], 'date': parts[1], 'text': parts.sublist(2).join('|')});
           }
         }
-        setState(() => _savedNotes = loaded);
+        setState(() {
+          _savedNotes = loaded;
+          _filteredNotes = List.from(_savedNotes);
+        });
       }
     } catch (e) {
       print(e);
     }
   }
 
-  // Pinindot ang isang lumang recording para buksan sa editor/AI analyzer
-  void _openNoteToAnalyze(Map<String, String> note) {
-    setState(() {
-      _textController.text = note['text'] ?? '';
-      _finalizedText = note['text'] ?? '';
-      _aiResponse = "Nakahanda na ang note. Magtanong ka sa AI sa ibaba tungkol sa transkripsyon na ito.";
-    });
-  }
-
   @override
   void dispose() {
-    _recordingTimer?.cancel();
     _textController.dispose();
+    _searchController.dispose();
     _aiQueryController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    // DITO INILAGAY ANG TAB CONTROLLER PARA MAGKAROON NG TAB 1 AT TAB 2
     return DefaultTabController(
-      length: 2, // Gagawa tayo ng 2 tabs: Transcribe & AI Assistant
+      length: 2, 
       child: Scaffold(
-        backgroundColor: const Color(0xFFF4F6F9),
         appBar: AppBar(
-          title: const Text('ChoyNotes AI Pro', style: TextStyle(fontWeight: FontWeight.bold)),
-          backgroundColor: Colors.white,
+          title: const Text('ChoyNotes Pro', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+          backgroundColor: const Color(0xFF0F172A),
           centerTitle: true,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.wb_sunny, color: Colors.white),
+              onPressed: () {}, // Theme switch placeholder mula sa screenshot mo
+            ),
+          ],
+          // Heto ang navigation sa ilalim ng title para makalipat sa AI Tab
           bottom: const TabBar(
+            labelColor: Colors.blueAccent,
+            unselectedLabelColor: Colors.white60,
+            indicatorColor: Colors.blueAccent,
             tabs: [
               Tab(icon: Icon(Icons.mic), text: "Transcribe"),
               Tab(icon: Icon(Icons.psychology), text: "AI Assistant"),
             ],
           ),
         ),
-        body: TabBarView(
+        body: Column(
           children: [
-            // --- TAB 1: TRANSCRIBER & LIST ---
-            Column(
-              children: [
-                if (_isListening)
-                  Container(
-                    color: Colors.amber.shade50,
-                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8.0),
+              child: Text("Program by: Renante Fullo", style: TextStyle(color: Colors.white70, fontSize: 14)),
+            ),
+            
+            // Dito naghahati ang Screen sa dalawang magkaibang Tab view
+            Expanded(
+              child: TabBarView(
+                children: [
+                  
+                  // ================= TAB 1: TRANSCRIBE (ANG DESIGN MO SA SCREENSHOT) =================
+                  SingleChildScrollView(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        children: [
+                          // Dropdown Category
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text("Select Category:", style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.w500)),
+                              DropdownButton<String>(
+                                value: _selectedCategory,
+                                dropdownColor: const Color(0xFF1E293B),
+                                items: _categories.map((String value) {
+                                  return DropdownMenuItem<String>(value: value, child: Text(value, style: const TextStyle(color: Colors.white)));
+                                }).toList(),
+                                onChanged: (newValue) {
+                                  setState(() {
+                                    _selectedCategory = newValue!;
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          
+                          // Input/Transcription Box gaya ng nasa screenshot mo
+                          Container(
+                            height: 180,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              border: Border.all(color: Colors.white60),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: TextField(
+                              controller: _textController,
+                              maxLines: null,
+                              readOnly: _isListening,
+                              style: const TextStyle(color: Colors.white, fontSize: 16),
+                              decoration: const InputDecoration(
+                                border: InputBorder.none,
+                                hintText: "Magsimulang mag-record...",
+                                hintStyle: TextStyle(color: Colors.white38),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          
+                          // Save Button
+                          SizedBox(
+                            width: double.infinity,
+                            height: 50,
+                            child: ElevatedButton.icon(
+                              onPressed: _saveNote,
+                              icon: const Icon(Icons.bookmark, color: Colors.white),
+                              label: const Text("Save Transcript", style: TextStyle(fontSize: 16, color: Colors.white)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF3B82F6),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          
+                          // Search Box mula sa screenshot mo
+                          TextField(
+                            controller: _searchController,
+                            style: const TextStyle(color: Colors.white),
+                            decoration: InputDecoration(
+                              prefixIcon: const Icon(Icons.search, color: Colors.white60),
+                              hintText: "Search notes...",
+                              hintStyle: const TextStyle(color: Colors.white38),
+                              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white60)),
+                              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.blueAccent)),
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          
+                          // List of Saved Notes
+                          _filteredNotes.isEmpty
+                              ? const Padding(
+                                  padding: EdgeInsets.only(top: 40.0),
+                                  child: Text("No notes found.", style: TextStyle(color: Colors.white38)),
+                                )
+                              : ListView.builder(
+                                  shrinkWrap: true,
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  itemCount: _filteredNotes.length,
+                                  itemBuilder: (context, index) {
+                                    final item = _filteredNotes[index];
+                                    return Card(
+                                      color: const Color(0xFF1E293B),
+                                      margin: const EdgeInsets.symmetric(vertical: 4),
+                                      child: ListTile(
+                                        title: Text(item['text'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white)),
+                                        subtitle: Text("${item['category']} • ${item['date']}", style: const TextStyle(color: Colors.white60)),
+                                        trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.white60),
+                                        onTap: () {
+                                          setState(() {
+                                            _textController.text = item['text'] ?? '';
+                                            _finalizedText = item['text'] ?? '';
+                                            _aiResponse = "Naka-load na ang note. Lumipat sa AI Assistant Tab para magtanong.";
+                                          });
+                                        },
+                                      ),
+                                    );
+                                  },
+                                ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  // ================= TAB 2: AI ASSISTANT (ANG BAGONG NOTTA AI FEATURE) =================
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
                       children: [
-                        const Icon(Icons.circle, color: Colors.red, size: 12),
-                        const SizedBox(width: 8),
-                        Text('Live Transcribing: ${_formatDuration(_secondsRecorded)}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                        Expanded(
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(color: const Color(0xFF1E293B), borderRadius: BorderRadius.circular(12)),
+                            child: SingleChildScrollView(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text("Sagot ng AI:", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent, fontSize: 16)),
+                                  const Divider(color: Colors.white24),
+                                  _isAiLoading 
+                                    ? const Center(child: Padding(padding: EdgeInsets.only(top: 20), child: CircularProgressIndicator()))
+                                    : Text(_aiResponse.isEmpty ? "Pumili ng note o mag-transcribe muna, pagkatapos ay magtanong ka rito sa AI." : _aiResponse, style: const TextStyle(fontSize: 15, color: Colors.white, height: 1.5)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            ElevatedButton.icon(
+                              onPressed: () => _askAI(_textController.text, "Ibigay ang buod ng transkripsyon na ito gamit ang maikling bullet points."),
+                              icon: const Icon(Icons.summarize),
+                              label: const Text("I-Summary"),
+                            ),
+                            ElevatedButton.icon(
+                              onPressed: () => _askAI(_textController.text, "Ano ang mga kailangang gawin o Action Items batay rito?"),
+                              icon: const Icon(Icons.task_alt),
+                              label: const Text("Action Items"),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _aiQueryController,
+                                style: const TextStyle(color: Colors.white),
+                                decoration: InputDecoration(
+                                  hintText: "Magtanong sa AI tungkol sa iyong note...",
+                                  hintStyle: const TextStyle(color: Colors.white38),
+                                  fillColor: const Color(0xFF1E293B),
+                                  filled: true,
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              icon: const Icon(Icons.send, color: Colors.blueAccent),
+                              onPressed: () {
+                                if (_aiQueryController.text.trim().isNotEmpty) {
+                                  _askAI(_textController.text, _aiQueryController.text.trim());
+                                  _aiQueryController.clear();
+                                }
+                              },
+                            )
+                          ],
+                        ),
                       ],
                     ),
                   ),
-                Expanded(
-                  flex: 3,
+                ],
+              ),
+            ),
+            
+            // Ang Mic button sa pinakababa mula sa iyong screenshot
+            Container(
+              padding: const EdgeInsets.only(bottom: 24),
+              color: const Color(0xFF0F172A),
+              child: Center(
+                child: GestureDetector(
+                  onTap: _listen,
                   child: Container(
                     padding: const EdgeInsets.all(16),
-                    margin: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-                    child: TextField(
-                      controller: _textController,
-                      maxLines: null,
-                      readOnly: _isListening,
-                      decoration: const InputDecoration(hintText: "Magsalita o pumili ng transkripsyon sa ibaba...", border: InputBorder.none),
+                    decoration: BoxDecoration(
+                      color: _isListening ? Colors.red : const Color(0xFF1E293B),
+                      shape: BoxShape.circle,
+                      boxShadow: [BoxShadow(color: Colors.black25, blurRadius: 10, offset: const Offset(0, 4))],
                     ),
+                    child: Icon(_isListening ? Icons.stop : Icons.mic, size: 30, color: Colors.white),
                   ),
                 ),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16),
-                  child: Align(alignment: Alignment.centerLeft, child: Text('History (Tap to open/analyze)', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
-                ),
-                Expanded(
-                  flex: 2,
-                  child: ListView.builder(
-                    itemCount: _savedNotes.length,
-                    itemBuilder: (context, index) {
-                      final item = _savedNotes[index];
-                      return Card(
-                        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                        child: ListTile(
-                          onTap: () => _openNoteToAnalyze(item),
-                          title: Text(item['text'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis),
-                          subtitle: Text("${item['date']} • ${item['duration']}"),
-                          trailing: const Icon(Icons.arrow_forward_ios, size: 14),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  color: Colors.white,
-                  child: Center(
-                    child: FloatingActionButton(
-                      onPressed: _listen,
-                      backgroundColor: _isListening ? Colors.red : const Color(0xFF1A73E8),
-                      child: Icon(_isListening ? Icons.stop : Icons.mic, color: Colors.white),
-                    ),
-                  ),
-                )
-              ],
-            ),
-
-            // --- TAB 2: AI Q&A ASSISTANT (KAYANG SAGUTIN ANG NOTES) ---
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                children: [
-                  // Dito ipapakita ang sagot ng AI
-                  Expanded(
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-                      child: SingleChildScrollView(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text("Sagot ng AI:", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent, fontSize: 16)),
-                            const Divider(),
-                            _isAiLoading 
-                              ? const Center(child: CircularProgressIndicator())
-                              : Text(_aiResponse.isEmpty ? "Wala pang tanong. Mag-type sa ibaba para magtanong tungkol sa iyong note." : _aiResponse, style: const TextStyle(fontSize: 15, height: 1.5)),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  // Mabilisang Utos/Prompts gaya ng Notta
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      ElevatedButton.icon(
-                        onPressed: () => _askAI(_textController.text, "Ibahagi sa akin ang maikling buod (summary) ng transkripsyon na ito at lagyan ng bullet points."),
-                        icon: const Icon(Icons.summarize),
-                        label: const Text("I-Summary"),
-                      ),
-                      ElevatedButton.icon(
-                        onPressed: () => _askAI(_textController.text, "Ano ang mga mahahalagang 'Action Items' o mga kailangang gawin batay sa note na ito?"),
-                        icon: const Icon(Icons.task_alt),
-                        label: const Text("Action Items"),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  // Custom Question input field
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _aiQueryController,
-                          decoration: InputDecoration(
-                            hintText: "May tanong ka ba sa note na ito?",
-                            fillColor: Colors.white,
-                            filled: true,
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        icon: const Icon(Icons.send, color: Color(0xFF1A73E8)),
-                        onPressed: () {
-                          if (_aiQueryController.text.trim().isNotEmpty) {
-                            _askAI(_textController.text, _aiQueryController.text.trim());
-                            _aiQueryController.clear();
-                          }
-                        },
-                      )
-                    ],
-                  ),
-                ],
               ),
             ),
           ],
