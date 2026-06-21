@@ -18,7 +18,7 @@ class ChoyNotesApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueAccent),
-        useMaterialDesign: true,
+        useMaterial3: true, // Inayos mula sa useMaterialDesign
       ),
       home: const HomeScreen(),
     );
@@ -35,7 +35,14 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   late stt.SpeechToText _speech;
   bool _isListening = false;
-  String _text = "Pindutin ang mic sa ibaba para magsimulang mag-record...";
+  bool _shouldBeListening = false; // Flag para sa tuloy-tuloy na pakikinig
+  
+  // Gagamit tayo ng controller para sa Text Field para mas madaling dugtungan ang sulat
+  final TextEditingController _textController = TextEditingController(
+    text: "Pindutin ang mic sa ibaba para magsimulang mag-record..."
+  );
+  
+  String _previousText = ""; // Lalagyan ng lumang text habang nagsasalita
   List<String> _savedNotes = [];
 
   @override
@@ -45,45 +52,94 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadNotes();
   }
 
+  void _initAndStartSpeech() async {
+    bool available = await _speech.initialize(
+      onError: (val) => print('onError: $val'),
+      onStatus: (status) {
+        print('onStatus: $status');
+        // KUNG KUSA SYANG NAG-STOP TAHIMIK ANG USER:
+        // Pero gusto pa rin natin makinig (_shouldBeListening), i-restart ang mic
+        if (status == 'notListening' && _shouldBeListening) {
+          _startListeningLoop();
+        }
+      },
+    );
+
+    if (available) {
+      setState(() {
+        _isListening = true;
+        _shouldBeListening = true;
+      });
+      _startListeningLoop();
+    }
+  }
+
+  void _startListeningLoop() async {
+    if (!_shouldBeListening) return;
+
+    // Kunin ang kasalukuyang nakasulat para hindi mabura kapag may bagong narinig
+    _previousText = _textController.text;
+    if (_previousText == "Pindutin ang mic sa ibaba para magsimulang mag-record...") {
+      _previousText = "";
+    }
+
+    await _speech.listen(
+      onResult: (val) => setState(() {
+        if (_previousText.isEmpty) {
+          _textController.text = val.recognizedWords;
+        } else {
+          // DUGTONG LOGIC: Lumang sinabi + space + bagong narinig
+          _textController.text = "$_previousText ${val.recognizedWords}";
+        }
+        
+        // I-move ang cursor sa dulo para laging kita ang sinusulat
+        _textController.selection = TextSelection.fromPosition(
+          TextPosition(offset: _textController.text.length)
+        );
+      }),
+      listenFor: const Duration(minutes: 5), // Makikinig nang hanggang 5 minuto
+      pauseFor: const Duration(seconds: 10), // 10 seconds na pause bago mag-refresh ang engine loop
+      partialResults: true,
+    );
+  }
+
   void _listen() async {
     if (!_isListening) {
       var status = await Permission.microphone.request();
       if (status.isGranted) {
-        bool available = await _speech.initialize(
-          onStatus: (val) => print('onStatus: $val'),
-          onError: (val) => print('onError: $val'),
-        );
-        if (available) {
-          setState(() => _isListening = true);
-          _speech.listen(
-            onResult: (val) => setState(() {
-              _text = val.recognizedWords;
-            }),
-          );
+        if (_textController.text == "Pindutin ang mic sa ibaba para magsimulang mag-record...") {
+          _textController.clear();
         }
+        _initAndStartSpeech();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Kailangan ng permiso sa Mic para mag-record.')),
         );
       }
     } else {
-      setState(() => _isListening = false);
+      setState(() {
+        _isListening = false;
+        _shouldBeListening = false;
+      });
       _speech.stop();
     }
   }
 
   void _saveNote() async {
-    if (_text.isNotEmpty && _text != "Pindutin ang mic sa ibaba para magsimulang mag-record...") {
+    String currentText = _textController.text.trim();
+    if (currentText.isNotEmpty && currentText != "Pindutin ang mic sa ibaba para magsimulang mag-record...") {
       setState(() {
-        _savedNotes.add(_text);
-        _text = "Pindutin ang mic sa ibaba para magsimulang mag-record...";
+        _savedNotes.add(currentText);
+        _textController.text = "Pindutin ang mic sa ibaba para magsimulang mag-record...";
       });
       final directory = await getApplicationDocumentsDirectory();
       final file = File('${directory.path}/notes.txt');
       await file.writeAsString(_savedNotes.join('\n---\n'));
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Na-save na ang iyong note!')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Na-save na ang iyong note!')),
+        );
+      }
     }
   }
 
@@ -103,6 +159,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   @override
+  void dispose() {
+    _textController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
@@ -119,67 +181,68 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.all(16),
               margin: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.grey[100],
-                border: Border.all(color: Colors.blueAccent.withOpacity(0.5)),
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withAlpha(50),
+                    blurRadius: 10,
+                    spreadRadius: 2,
+                  )
+                ]
               ),
-              child: SingleChildScrollView(
-                child: Text(
-                  _text,
-                  style: const TextStyle(fontSize: 18, color: Colors.black87),
+              // Pinalitan ng TextField para pwedeng i-scroll at i-edit gamit ang keyboard kung gusto mo
+              child: TextField(
+                controller: _textController,
+                maxLines: null,
+                minLines: 10,
+                readOnly: _isListening, // Bawal muna i-type kapag nagsasalita para walang conflict
+                decoration: const InputDecoration(
+                  border: InputBorder.none,
                 ),
+                style: const TextStyle(fontSize: 18, color: Colors.black87),
               ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton.icon(
-                onPressed: _saveNote,
-                icon: const Icon(Icons.save),
-                label: const Text('I-save ang Note', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          const Divider(),
-          const Padding(
-            padding: EdgeInsets.all(8.0),
-            child: Text('Mga Na-save na Notes:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-          ),
+          
+          // Listahan ng Saved Notes sa ibaba
           Expanded(
-            flex: 3,
-            child: _savedNotes.isEmpty
-                ? const Center(child: Text('Wala pang na-save na notes.', style: TextStyle(color: Colors.grey)))
-                : ListView.builder(
-                    itemCount: _savedNotes.length,
-                    itemBuilder: (context, index) {
-                      return Card(
-                        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                        elevation: 2,
-                        child: ListTile(
-                          title: Text(_savedNotes[index]),
-                          leading: const Icon(Icons.note, color: Colors.blueAccent),
-                        ),
-                      );
-                    },
+            flex: 2,
+            child: ListView.builder(
+              itemCount: _savedNotes.length,
+              itemBuilder: (context, index) {
+                return Card(
+                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  child: ListTile(
+                    title: Text(_savedNotes[index], maxLines: 2, overflow: TextOverflow.ellipsis),
+                    subtitle: Text('Note #${index + 1}'),
                   ),
+                );
+              },
+            ),
           ),
-          const SizedBox(height: 80),
+          
+          // Mga Buttons sa pinakababa
+          Padding(
+            padding: const EdgeInsets.only(bottom: 24.0, left: 16, right: 16),
+            boxShadow: const [],
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                FloatingActionButton(
+                  onPressed: _listen,
+                  backgroundColor: _isListening ? Colors.red : Colors.blueAccent,
+                  child: Icon(_isListening ? Icons.mic : Icons.mic_none, color: Colors.white),
+                ),
+                FloatingActionButton(
+                  onPressed: _saveNote,
+                  backgroundColor: Colors.green,
+                  child: const Icon(Icons.save, color: Colors.white),
+                ),
+              ],
+            ),
+          )
         ],
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      floatingActionButton: FloatingActionButton.large(
-        onPressed: _listen,
-        backgroundColor: _isListening ? Colors.red : Colors.blueAccent,
-        child: Icon(_isListening ? Icons.mic : Icons.mic_none, color: Colors.white, size: 36),
       ),
     );
   }
