@@ -27,7 +27,7 @@ jobs:
       with:
         channel: 'stable'
 
-    - name: Auto-generate Clean Android Project
+    - name: Auto-generate Clean Modern Android Project
       run: flutter create . --overwrite --org com.choynotes.app
 
     - name: Inject Clean ChoyNotes App Code
@@ -290,7 +290,7 @@ jobs:
           image_path: "app_icon.png"
         EOF
 
-    - name: Overwrite Clean Valid AndroidManifest.xml
+    - name: Configure Manifest for Voice Speech Queries
       run: |
         cat << 'EOF' > android/app/src/main/AndroidManifest.xml
         <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.choynotes.app">
@@ -331,71 +331,14 @@ jobs:
         </manifest>
         EOF
 
-    - name: Fix Modern Gradle Repositories Safely
-      run: |
-        cat << 'EOF' > android/settings.gradle
-        pluginManagement {
-            def flutterSdkPath = {
-                def properties = new Properties()
-                def propertiesFile = new File(settingsDir, "local.properties")
-                if (propertiesFile.exists()) {
-                    propertiesFile.withReader("UTF-8") { reader -> properties.load(reader) }
-                }
-                def sdkPath = properties.getProperty("flutter.sdk")
-                assert sdkPath != null, "flutter.sdk not set in local.properties"
-                return sdkPath
-            }();
-
-            includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
-
-            repositories {
-                google()
-                mavenCentral()
-                gradlePluginPortal()
-            }
-        }
-
-        plugins {
-            id "dev.flutter.flutter-plugin-loader" version "1.0.0"
-            id "com.android.application" version "7.3.0" apply false
-            id "org.jetbrains.kotlin.android" version "1.7.10" apply false
-        }
-
-        include ":app"
-        EOF
-
-    - name: Clean and Patch Build Repositories
-      run: |
-        cat << 'EOF' > android/build.gradle
-        buildscript {
-            ext.kotlin_version = '1.7.10'
-            repositories {
-                google()
-                mavenCentral()
-            }
-            dependencies {
-                classpath 'com.android.tools.build:gradle:7.3.0'
-                classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
-            }
-        }
-
-        rootProject.buildDir = '../build'
-        subprojects {
-            project.buildDir = "${rootProject.buildDir}/${project.name}"
-            project.evaluationDependsOn(':app')
-        }
-
-        tasks.register("clean", Delete) {
-            delete rootProject.buildDir
-        }
-        EOF
-
-    - name: Install Safe Dependencies
+    - name: Fetch Flutter Dependencies
       run: flutter pub get
 
-    - name: Strip JCenter From Cache Plugins
+    - name: Global Gradle Safety Patch (Fix JCenter & Buildscript Errors)
       run: |
-        find ~/.pub-cache/hosted/pub.dev/speech_to_text-* -name "build.gradle" -exec sed -i '/jcenter()/d' {} + || true
+        # Hinahanap nito ang lahat ng build.gradle files sa pub-cache at pinapalitan ang jcenter() ng mavenCentral()
+        find ~/.pub-cache/hosted/pub.dev/speech_to_text-* -name "build.gradle" -exec sed -i 's/jcenter()/mavenCentral()/g' {} + || true
+        find ~/.pub-cache/hosted/pub.dev/speech_to_text-* -name "build.gradle" -exec sed -i 's/maven { url "https:\/\/jcenter.bintray.com" }/mavenCentral()/g' {} + || true
 
     - name: Generate Custom Launcher Icons
       run: flutter pub run flutter_launcher_icons
