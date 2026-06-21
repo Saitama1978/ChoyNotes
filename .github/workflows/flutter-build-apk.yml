@@ -67,7 +67,7 @@ jobs:
         }
 
         class HomeScreen extends StatefulWidget {
-          const HomeScreen(--super.key);
+          const HomeScreen({super.key});
 
           @override
           State<HomeScreen> createState() => _HomeScreenState();
@@ -491,7 +491,6 @@ jobs:
 
     - name: Global Subprojects SDK Safety Force-Override
       run: |
-        # Ino-override nito ang mismong root level buildscript para pilitin ang lahat ng sub-modules (gaya ng share_plus) na mag-build gamit ang SDK 34 at Java 17.
         cat << 'EOF' >> android/build.gradle
 
         subprojects {
