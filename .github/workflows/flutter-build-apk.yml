@@ -32,7 +32,7 @@ jobs:
         rm -rf android ios web windows macos linux
         flutter create . --org com.choynotes.app --project-name choynotes
 
-    - name: Inject Premium UI ChoyNotes App Code
+    - name: Inject English UI ChoyNotes App Code
       run: |
         cat << 'EOF' > lib/main.dart
         import 'dart:io';
@@ -80,16 +80,15 @@ jobs:
           final TextEditingController _textController = TextEditingController();
           bool _isListening = false;
           List<String> _savedNotes = [];
-          
-          // Gagamitin ang flag na ito para malaman kung may ine-edit
           int? _editingIndex; 
+          bool _shouldBeListening = false; 
 
           @override
           void initState() {
             super.initState();
             _initSpeech();
             _loadNotes();
-            _textController.text = "Pindutin ang mikropono sa ibaba at magsalita upang mag-transcribe...";
+            _textController.text = "Tap the microphone below and speak to transcribe...";
           }
 
           @override
@@ -100,7 +99,20 @@ jobs:
 
           void _initSpeech() async {
             try {
-              await _speechToText.initialize();
+              await _speechToText.initialize(
+                onError: (error) {
+                  debugPrint("Speech Error: ${error.errorMsg}");
+                  if (_shouldBeListening && error.errorId != 'error_client') {
+                    _restartListeningLoop();
+                  }
+                },
+                onStatus: (status) {
+                  debugPrint("Speech Status: $status");
+                  if (status == 'notListening' && _shouldBeListening) {
+                    _restartListeningLoop();
+                  }
+                },
+              );
             } catch (e) {
               debugPrint("Speech init error: $e");
             }
@@ -113,56 +125,74 @@ jobs:
               if (available) {
                 setState(() {
                   _isListening = true;
-                  if (_textController.text.startsWith("Pindutin")) {
+                  _shouldBeListening = true;
+                  if (_textController.text.startsWith("Tap the microphone")) {
                     _textController.clear();
                   }
                 });
-                await _speechToText.listen(
-                  onResult: (result) {
-                    setState(() {
-                      _textController.text = result.recognizedWords;
-                    });
-                  },
-                );
+                _executeListeningEngine();
               }
             } else {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Kailangan ng permiso sa Mic para makapagsulat.')),
+                const SnackBar(content: Text('Microphone permission is required to transcribe.')),
               );
             }
           }
 
+          void _executeListeningEngine() async {
+            if (!_shouldBeListening) return;
+            
+            await _speechToText.listen(
+              onResult: (result) {
+                setState(() {
+                  _textController.text = result.recognizedWords;
+                });
+              },
+              listenFor: const Duration(hours: 1),
+              pauseFor: const Duration(minutes: 10),
+              listenOptions: SpeechListenOptions(
+                partialResults: true,
+                cancelOnError: false,
+              ),
+            );
+          }
+
+          void _restartListeningLoop() async {
+            if (!_shouldBeListening) return;
+            await Future.delayed(const Duration(milliseconds: 300));
+            _executeListeningEngine();
+          }
+
           void _stopListening() async {
-            await _speechToText.stop();
             setState(() {
+              _shouldBeListening = false;
               _isListening = false;
             });
+            await _speechToText.stop();
           }
 
           void _saveNote() async {
             final text = _textController.text.trim();
-            if (text.isEmpty || text.startsWith("Pindutin")) return;
+            if (text.isEmpty || text.startsWith("Tap the microphone")) return;
 
             final String timestamp = DateFormat('MMM dd, yyyy • hh:mm a').format(DateTime.now());
             final String formattedNote = "$timestamp===$text";
 
             setState(() {
               if (_editingIndex != null) {
-                // Kung may ine-edit, i-update ang lumang note
                 _savedNotes[_editingIndex!] = formattedNote;
                 _editingIndex = null;
               } else {
-                // Kung wala, magpasok ng bagong note sa unahan
                 _savedNotes.insert(0, formattedNote);
               }
-              _textController.text = "Pindutin ang mikropono sa ibaba at magsalita upang mag-transcribe...";
+              _textController.text = "Tap the microphone below and speak to transcribe...";
             });
 
             await _saveToStorage();
 
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('Matagumpay na nai-save ang iyong transcript!'),
+                content: Text('Transcript successfully saved!'),
                 backgroundColor: Color(0xFF10B981),
               ),
             );
@@ -176,7 +206,7 @@ jobs:
             
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('Inilipat ang note sa itaas. Pwede mo na itong baguhin at i-save uli!'),
+                content: Text('Note loaded into editor. Modify and tap Update Note!'),
                 backgroundColor: Color(0xFF3B82F6),
               ),
             );
@@ -211,7 +241,7 @@ jobs:
             await _saveToStorage();
             
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Nabura na ang note.'), backgroundColor: Colors.redAccent),
+              const SnackBar(content: Text('Note deleted successfully.'), backgroundColor: Colors.redAccent),
             );
           }
 
@@ -249,7 +279,7 @@ jobs:
                   ),
                   TextButton(
                     onPressed: () => Navigator.pop(context),
-                    child: const Text('Isara', style: TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.bold)),
+                    child: const Text('Close', style: TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.bold)),
                   ),
                 ],
               ),
@@ -326,14 +356,14 @@ jobs:
                         keyboardType: TextInputType.multiline,
                         style: TextStyle(
                           fontSize: 17, 
-                          color: _textController.text.startsWith("Pindutin") ? const Color(0xFF94A3B8) : const Color(0xFF1E293B),
+                          color: _textController.text.startsWith("Tap the microphone") ? const Color(0xFF94A3B8) : const Color(0xFF1E293B),
                           height: 1.6,
                         ),
                         decoration: const InputDecoration(
                           border: InputBorder.none,
                         ),
                         onTap: () {
-                          if (_textController.text.startsWith("Pindutin")) {
+                          if (_textController.text.startsWith("Tap the microphone")) {
                             setState(() {
                               _textController.clear();
                             });
@@ -355,7 +385,7 @@ jobs:
                                 onPressed: () {
                                   setState(() {
                                     _editingIndex = null;
-                                    _textController.text = "Pindutin ang mikropono sa ibaba at magsalita upang mag-transcribe...";
+                                    _textController.text = "Tap the microphone below and speak to transcribe...";
                                   });
                                 },
                                 style: OutlinedButton.styleFrom(
@@ -363,7 +393,7 @@ jobs:
                                   foregroundColor: Colors.redAccent,
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                                 ),
-                                child: const Text('Kanselahin', style: TextStyle(fontWeight: FontWeight.bold)),
+                                child: const Text('Cancel', style: TextStyle(fontWeight: FontWeight.bold)),
                               ),
                             ),
                           ),
@@ -377,7 +407,7 @@ jobs:
                               onPressed: _isListening ? null : _saveNote,
                               icon: Icon(_editingIndex != null ? Icons.check_circle_outline : Icons.bookmark_add_outlined, size: 20),
                               label: Text(
-                                _editingIndex != null ? 'I-update ang Note' : 'I-save ang Transcript', 
+                                _editingIndex != null ? 'Update Note' : 'Save Transcript', 
                                 style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)
                               ),
                               style: ElevatedButton.styleFrom(
@@ -401,7 +431,7 @@ jobs:
                     child: Row(
                       children: [
                         const Text(
-                          'MGA KASALUKUYANG TALA', 
+                          'SAVED NOTES LIST', 
                           style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12, color: Color(0xFF64748B), letterSpacing: 1.0),
                         ),
                         const SizedBox(width: 8),
@@ -423,7 +453,7 @@ jobs:
                               children: [
                                 Icon(Icons.mic_none_outlined, size: 48, color: Colors.grey[300]),
                                 const SizedBox(height: 12),
-                                const Text('Handa na ang workspace mo.', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 14)),
+                                const Text('Your workspace is empty.', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 14)),
                               ],
                             ),
                           )
@@ -432,7 +462,7 @@ jobs:
                             itemCount: _savedNotes.length,
                             itemBuilder: (context, index) {
                               final parts = _savedNotes[index].split('===');
-                              final String dateText = parts.length > 1 ? parts[0] : "Kamakailan";
+                              final String dateText = parts.length > 1 ? parts[0] : "Recent";
                               final String noteContent = parts.length > 1 ? parts[1] : _savedNotes[index];
 
                               return Container(
