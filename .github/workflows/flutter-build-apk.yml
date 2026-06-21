@@ -56,7 +56,7 @@ jobs:
 
         class _ChoyNotesAppState extends State<ChoyNotesApp> {
           bool _isDarkMode = true;
-          String _globalApiKey = ""; // Dito ise-save ang API Key mula sa Settings UI
+          String _globalApiKey = ""; 
 
           void toggleTheme() {
             setState(() {
@@ -182,7 +182,8 @@ jobs:
             });
 
             try {
-              final model = GenerativeModel(model: 'gemini-1.5-flash', apiKey: widget.apiKey);
+              // ✨ FIXED: Ginawang stable 'gemini-pro' para hindi magka-mismatch sa beta endpoint
+              final model = GenerativeModel(model: 'gemini-pro', apiKey: widget.apiKey);
               final prompt = "Context:\n$contextText\n\nQuestion: $userQuestion";
               final content = [Content.text(prompt)];
               final response = await model.generateContent(content);
@@ -215,7 +216,7 @@ jobs:
                       decoration: const InputDecoration(
                         border: OutlineInputBorder(),
                         labelText: "API Key",
-                        hintText: "AIzaSy...",
+                        hintText: "AQ.Ab8RN...",
                       ),
                     ),
                   ],
