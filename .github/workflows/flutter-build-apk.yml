@@ -274,7 +274,7 @@ jobs:
           cupertino_icons: ^1.0.6
           permission_handler: ^11.3.1
           path_provider: ^2.1.3
-          speech_to_text: ^6.1.1
+          speech_to_text: ^7.4.0
 
         dev_dependencies:
           flutter_test:
@@ -290,10 +290,10 @@ jobs:
           image_path: "app_icon.png"
         EOF
 
-    - name: Configure Manifest for Voice Speech Queries
+    - name: Configure Modern Manifest for Voice Speech Queries
       run: |
         cat << 'EOF' > android/app/src/main/AndroidManifest.xml
-        <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.choynotes.app">
+        <manifest xmlns:android="http://schemas.android.com/apk/res/android">
             <uses-permission android:name="android.permission.RECORD_AUDIO" />
             <uses-permission android:name="android.permission.INTERNET" />
             
@@ -331,12 +331,17 @@ jobs:
         </manifest>
         EOF
 
+    - name: Set Modern App Namespace and CompileSdkVersion
+      run: |
+        sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 34/g' android/app/build.gradle
+        # Inilalagay ang modernong namespace property sa loob ng android {} block ng gradle file upang mawala ang manifest warning
+        sed -i '/android {/a \    namespace "com.choynotes.app"' android/app/build.gradle
+
     - name: Fetch Flutter Dependencies
       run: flutter pub get
 
     - name: Global Gradle Safety Patch (Fix JCenter & Buildscript Errors)
       run: |
-        # Hinahanap nito ang lahat ng build.gradle files sa pub-cache at pinapalitan ang jcenter() ng mavenCentral()
         find ~/.pub-cache/hosted/pub.dev/speech_to_text-* -name "build.gradle" -exec sed -i 's/jcenter()/mavenCentral()/g' {} + || true
         find ~/.pub-cache/hosted/pub.dev/speech_to_text-* -name "build.gradle" -exec sed -i 's/maven { url "https:\/\/jcenter.bintray.com" }/mavenCentral()/g' {} + || true
 
