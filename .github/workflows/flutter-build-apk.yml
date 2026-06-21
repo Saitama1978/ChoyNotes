@@ -130,7 +130,6 @@ jobs:
                 _wordsSpoken.startsWith("Pindutin") || 
                 _wordsSpoken.startsWith("Nakikinig na")) return;
 
-            // Gumagawa ng magandang timestamp (Halimbawa: Jun 21, 2026 • 11:42 AM)
             final String timestamp = DateFormat('MMM dd, yyyy • hh:mm a').format(DateTime.now());
             final String formattedNote = "$timestamp===$_wordsSpoken";
 
@@ -175,7 +174,7 @@ jobs:
             await file.writeAsString(_savedNotes.join('\n---\n'));
             
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Deleted note.'), backgroundColor: Colors.redAccent),
+              const SnackBar(content: Text('Nabura na ang note.'), backgroundColor: Colors.redAccent),
             );
           }
 
@@ -188,7 +187,9 @@ jobs:
                   children: [
                     const Icon(Icons.event_note, color: Color(0xFF3B82F6)),
                     const SizedBox(width: 8),
-                    Text(date, style: const TextStyle(fontSize: 14, color: Color(0xFF64748B))),
+                    Expanded(
+                      child: Text(date, style: const TextStyle(fontSize: 14, color: Color(0xFF64748B))),
+                    ),
                   ],
                 ),
                 content: SingleChildScrollView(
@@ -197,7 +198,10 @@ jobs:
                 actions: [
                   IconButton(
                     icon: const Icon(Icons.share_outlined, color: Color(0xFF3B82F6)),
-                    onPressed: () => Share.share(text),
+                    onPressed: () {
+                      Navigator.pop(context);
+                      Share.share(text);
+                    },
                   ),
                   TextButton(
                     onPressed: () => Navigator.pop(context),
@@ -345,7 +349,6 @@ jobs:
                             physics: const BouncingScrollPhysics(),
                             itemCount: _savedNotes.length,
                             itemBuilder: (context, index) {
-                              // Paghiwalayin ang timestamp at ang actual text gamit ang delimiter natin
                               final parts = _savedNotes[index].split('===');
                               final String dateText = parts.length > 1 ? parts[0] : "Kamakailan";
                               final String noteContent = parts.length > 1 ? parts[1] : _savedNotes[index];
@@ -490,6 +493,17 @@ jobs:
             </application>
         </manifest>
         EOF
+
+    - name: Force Upgrade Android SDK Version to 34 (Fix Share Build Error)
+      run: |
+        # Pinapalitan ang default flutter compile at target SDK patungong 34 para maging compatible sa share_plus package
+        if [ -f "android/app/build.gradle" ]; then
+          sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 34/g' android/app/build.gradle
+          sed -i 's/targetSdkVersion flutter.targetSdkVersion/targetSdkVersion 34/g' android/app/build.gradle
+        elif [ -f "android/app/build.gradle.kts" ]; then
+          sed -i 's/compileSdk = .*/compileSdk = 34/g' android/app/build.gradle.kts
+          sed -i 's/targetSdk = .*/targetSdk = 34/g' android/app/build.gradle.kts
+        fi
 
     - name: Safely Inject Namespace into Flutter-Generated Build Script
       run: |
