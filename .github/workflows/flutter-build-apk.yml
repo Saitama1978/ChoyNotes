@@ -52,7 +52,7 @@ jobs:
               debugShowCheckedModeBanner: false,
               theme: ThemeData(
                 colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueAccent),
-                useMaterialDesign: true,
+                useMaterial3: true,
               ),
               home: const HomeScreen(),
             );
@@ -152,7 +152,7 @@ jobs:
                         child: Text(
                           _statusText,
                           textAlign: TextAlign.center,
-                          style: const TextStyle(fontSize: 18, color: Colors.black87, fontWeight: FontWeight.medium),
+                          style: const TextStyle(fontSize: 18, color: Colors.black87),
                         ),
                       ),
                     ),
