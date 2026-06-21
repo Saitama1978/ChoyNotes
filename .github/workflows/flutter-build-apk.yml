@@ -32,7 +32,7 @@ jobs:
         rm -rf android ios web windows macos linux
         flutter create . --org com.choynotes.app --project-name choynotes
 
-    - name: Inject English UI ChoyNotes App Code
+    - name: Inject English UI and Fixed Continuous Recording Code
       run: |
         cat << 'EOF' > lib/main.dart
         import 'dart:io';
@@ -102,7 +102,8 @@ jobs:
               await _speechToText.initialize(
                 onError: (error) {
                   debugPrint("Speech Error: ${error.errorMsg}");
-                  if (_shouldBeListening && error.errorId != 'error_client') {
+                  // Ginamit ang error.errorMsg para maiwasan ang errorId compile bug
+                  if (_shouldBeListening && !error.errorMsg.contains('error_client')) {
                     _restartListeningLoop();
                   }
                 },
@@ -613,7 +614,7 @@ jobs:
         </manifest>
         EOF
 
-    - name: Force Global BuildScript Core SDK Overrides
+    - name: Force Global Subprojects SDK Overrides
       run: |
         cat << 'EOF' >> android/build.gradle
 
