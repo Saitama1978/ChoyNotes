@@ -331,7 +331,7 @@ jobs:
         </manifest>
         EOF
 
-    - name: Inject Valid Modern Kotlin build.gradle.kts
+    - name: Inject Correct Modern Kotlin build.gradle.kts
       run: |
         cat << 'EOF' > android/app/build.gradle.kts
         plugins {
@@ -350,7 +350,9 @@ jobs:
             }
 
             kotlinOptions {
-                jvmTarget = "17"
+                compilerOptions {
+                    jvmTarget.set(org.jetbrains.kotlin.config.JvmTarget.JVM_17)
+                }
             }
 
             defaultConfig {
