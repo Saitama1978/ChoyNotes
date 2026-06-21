@@ -118,7 +118,8 @@ jobs:
           List<Map<String, String>> _savedNotes = [];
           List<Map<String, String>> _filteredNotes = [];
 
-          final String _geminiApiKey = "PALITAN_ITO_NG_IYONG_API_KEY";
+          // 🔑 INJECTED: Awtomatiko nang nakalagay rito ang iyong Gemini API Key para sa AI features
+          final String _geminiApiKey = "AQ.Ab8RN6JOOuXW-E-q7CN0Je1OBsyjO6TAZC2xdYdG4YcPSAC_sQ";
 
           @override
           void initState() {
@@ -142,9 +143,9 @@ jobs:
           }
 
           void _askAI(String contextText, String userQuestion) async {
-            if (_geminiApiKey == "PALITAN_ITO_NG_IYONG_API_KEY" || _geminiApiKey.isEmpty) {
+            if (_geminiApiKey.isEmpty) {
               setState(() {
-                _aiResponse = "Pakilagay muna ang iyong Gemini API Key sa code.";
+                _aiResponse = "Walang nahanap na Gemini API Key.";
               });
               return;
             }
@@ -514,7 +515,7 @@ jobs:
                 ),
                 floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
                 floatingActionButton: Padding(
-                  padding: const EdgeInsets.only(bottom: 40.0), // FIX: Tama na ang syntax dito
+                  padding: const EdgeInsets.only(bottom: 40.0),
                   child: SizedBox(
                     width: 85,
                     height: 85,
