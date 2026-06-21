@@ -83,7 +83,7 @@ jobs:
               if (status.isGranted) {
                 setState(() {
                   _isRecording = true;
-                  _statusText = "🎤 Nagre-record na... Ang iyong boses ay ligtas na pinoproseso.";
+                  _statusText = "🎤 Nagre-record na... Ang iyong benses ay ligtas na pinoproseso.";
                 });
               } else {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -212,7 +212,7 @@ jobs:
         }
         EOF
 
-    - name: Inject Stable pubspec.yaml
+    - name: Inject Stable pubspec.yaml with Launcher Configuration
       run: |
         cat << 'EOF' > pubspec.yaml
         name: choynotes
@@ -234,9 +234,14 @@ jobs:
           flutter_test:
             sdk: flutter
           flutter_lints: ^3.0.0
+          flutter_launcher_icons: ^0.13.1
 
         flutter:
           uses-material-design: true
+
+        flutter_launcher_icons:
+          android: "launcher_icon"
+          image_path: "app_icon.png"
         EOF
 
     - name: Setup Android Permissions
@@ -245,6 +250,9 @@ jobs:
 
     - name: Install Safe Dependencies
       run: flutter pub get
+
+    - name: Generate Custom Launcher Icons
+      run: flutter pub run flutter_launcher_icons
 
     - name: Build Clean APK
       run: flutter build apk --release
