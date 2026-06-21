@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:permission_handler/permission_handler.dart';
+import 'package:path_provider/path_provider.dart';
+import 'import 'dart:io';
 
 void main() {
   runApp(const ChoyNotesApp());
@@ -13,52 +15,51 @@ class ChoyNotesApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'ChoyNotes',
-      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         primarySwatch: Colors.blue,
-        useMaterial3: true,
+        useMaterialDesign: true,
       ),
-      home: const MeetingRecorderScreen(),
+      home: const HomeScreen(),
     );
   }
 }
 
-class MeetingRecorderScreen extends StatefulWidget {
-  const MeetingRecorderScreen({super.key});
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
 
   @override
-  State<MeetingRecorderScreen> createState() => _MeetingRecorderScreenState();
+  State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _MeetingRecorderScreenState extends State<MeetingRecorderScreen> {
+class _HomeScreenState extends State<HomeScreen> {
   late stt.SpeechToText _speech;
   bool _isListening = false;
-  String _text = "Pindutin ang Mic sa ibaba para magsimulang mag-record ng meeting...";
+  String _text = "Pindutin ang mic sa ibaba para magsimulang mag-record...";
+  List<String> _savedNotes = [];
 
   @override
   void initState() {
     super.initState();
     _speech = stt.SpeechToText();
-    _requestPermission();
-  }
-
-  void _requestPermission() async {
-    await Permission.microphone.request();
+    _loadNotes();
   }
 
   void _listen() async {
     if (!_isListening) {
-      bool available = await _speech.initialize(
-        onStatus: (val) => print('onStatus: $val'),
-        onError: (val) => print('onError: $val'),
-      );
-      if (available) {
-        setState(() => _isListening = true);
-        _speech.listen(
-          onResult: (val) => setState(() {
-            _text = val.recognizedWords;
-          }),
+      var status = await Permission.microphone.request();
+      if (status.isGranted) {
+        bool available = await _speech.initialize(
+          onStatus: (val) => print('onStatus: $val'),
+          onError: (val) => print('onError: $val'),
         );
+        if (available) {
+          setState(() => _isListening = true);
+          _speech.listen(
+            onResult: (val) => setState(() {
+              _text = val.recognizedWords;
+            }),
+          );
+        }
       }
     } else {
       setState(() => _isListening = false);
@@ -66,98 +67,96 @@ class _MeetingRecorderScreenState extends State<MeetingRecorderScreen> {
     }
   }
 
+  void _saveNote() async {
+    if (_text.isNotEmpty && _text != "Pindutin ang mic sa ibaba para magsimulang mag-record...") {
+      setState(() {
+        _savedNotes.add(_text);
+        _text = "Pindutin ang mic sa ibaba para magsimulang mag-record...";
+      });
+      final directory = await getApplicationDocumentsDirectory();
+      final file = File('${directory.path}/notes.txt');
+      await file.writeAsString(_savedNotes.join('\n---\n'));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Na-save na ang iyong note!')),
+      );
+    }
+  }
+
+  void _loadNotes() async {
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final file = File('${directory.path}/notes.txt');
+      if (await file.exists()) {
+        String contents = await file.readAsString();
+        setState(() {
+          _savedNotes = contents.split('\n---\n');
+        });
+      }
+    } catch (e) {
+      print(e);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('ChoyNotes 🎙️'),
-        backgroundColor: Colors.blue[700],
+        title: const Text('ChoyNotes - AI Recorder'),
+        backgroundColor: Colors.blueAccent,
         foregroundColor: Colors.white,
-        centerTitle: true,
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            // Dito lalabas ang text ng transcription
-            Expanded(
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey.shade400),
-                  borderRadius: BorderRadius.circular(12),
-                  color: Colors.grey.shade50,
+      body: Column(
+        children: [
+          Expanded(
+            flex: 2,
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              margin: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.blueAccent),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: SingleChildScrollView(
+                child: Text(
+                  _text,
+                  style: const TextStyle(fontSize: 18, color: Colors.black87),
                 ),
-                child: SingleChildScrollView(
-                  child: Text(
-                    _text,
-                    style: const TextStyle(fontSize: 18, color: Colors.black87),
+              ),
+            ),
+          ),
+          ElevatedButton.icon(
+            onPressed: _saveNote,
+            icon: const Icon(Icons.save),
+            label: const Text('I-save ang Note'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+            ),
+          ),
+          const Divider(),
+          const Text('Mga Na-save na Notes:', style: TextStyle(fontWeight: FontWeight.bold)),
+          Expanded(
+            flex: 2,
+            child: ListView.builder(
+              itemCount: _savedNotes.length,
+              itemBuilder: (context, index) {
+                return Card(
+                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  child: ListTile(
+                    title: Text(_savedNotes[index]),
+                    leading: const Icon(Icons.note, color: Colors.blue),
                   ),
-                ),
-              ),
+                );
+              },
             ),
-            const SizedBox(height: 15),
-
-            // DEVELOPER CARD SECTION
-            Card(
-              elevation: 2,
-              color: Colors.blue.shade50,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.code, color: Colors.blue, size: 20),
-                    const SizedBox(width: 8),
-                    RichText(
-                      text: const TextSpan(
-                        style: TextStyle(fontSize: 14, color: Colors.black70),
-                        children: [
-                          TextSpan(text: 'Developer: '),
-                          TextSpan(
-                            text: 'Renante Fullo',
-                            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 15),
-
-            // MGA BUTTONS (RECORD AT SAVE)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                FloatingActionButton.extended(
-                  onPressed: _listen,
-                  label: Text(_isListening ? 'Listening...' : 'Record Meeting'),
-                  icon: Icon(_isListening ? Icons.mic : Icons.mic_none),
-                  backgroundColor: _isListening ? Colors.red : Colors.blue,
-                ),
-                ElevatedButton.icon(
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Saved to ChoyNotes History!')),
-                    );
-                  },
-                  icon: const Icon(Icons.save),
-                  label: const Text('Save Note'),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-          ],
-        ),
+          ),
+        ],
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      floatingActionButton: FloatingActionButton(
+        onPressed: _listen,
+        backgroundColor: _isListening ? Colors.red : Colors.blue,
+        child: Icon(_isListening ? Icons.mic : Icons.mic_none, color: Colors.white),
       ),
     );
   }
