@@ -274,7 +274,7 @@ jobs:
           cupertino_icons: ^1.0.6
           permission_handler: ^11.3.1
           path_provider: ^2.1.3
-          speech_to_text: ^6.6.2
+          speech_to_text: ^6.1.1
 
         dev_dependencies:
           flutter_test:
@@ -296,9 +296,6 @@ jobs:
         <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.choynotes.app">
             <uses-permission android:name="android.permission.RECORD_AUDIO" />
             <uses-permission android:name="android.permission.INTERNET" />
-            <uses-permission android:name="android.permission.BLUETOOTH" />
-            <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
-            <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
             
             <queries>
                 <intent>
@@ -334,7 +331,7 @@ jobs:
         </manifest>
         EOF
 
-    - name: Force Modern Repositories in Android Settings
+    - name: Fix Modern Gradle Repositories Safely
       run: |
         cat << 'EOF' > android/settings.gradle
         pluginManagement {
@@ -367,30 +364,38 @@ jobs:
         include ":app"
         EOF
 
-    - name: Force Project-Wide Repository Overrides (Kill JCenter Forever)
+    - name: Clean and Patch Build Repositories
       run: |
-        cat << 'EOF' >> android/build.gradle
-        allprojects {
-            buildscript {
-                repositories {
-                    google()
-                    mavenCentral()
-                }
-            }
+        cat << 'EOF' > android/build.gradle
+        buildscript {
+            ext.kotlin_version = '1.7.10'
             repositories {
                 google()
                 mavenCentral()
             }
+            dependencies {
+                classpath 'com.android.tools.build:gradle:7.3.0'
+                classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+            }
+        }
+
+        rootProject.buildDir = '../build'
+        subprojects {
+            project.buildDir = "${rootProject.buildDir}/${project.name}"
+            project.evaluationDependsOn(':app')
+        }
+
+        tasks.register("clean", Delete) {
+            delete rootProject.buildDir
         }
         EOF
 
     - name: Install Safe Dependencies
       run: flutter pub get
 
-    - name: Deep Scrub Gradle Cache for Old Plugins
+    - name: Strip JCenter From Cache Plugins
       run: |
-        find ~/.pub-cache/hosted/pub.dev/speech_to_text-* -name "build.gradle" -exec sed -i '/jcenter()/d' {} +
-        find ~/.pub-cache/hosted/pub.dev/speech_to_text-* -name "build.gradle" -exec sed -i 's/maven { url "https:\/\/jcenter.bintray.com" }//g' {} +
+        find ~/.pub-cache/hosted/pub.dev/speech_to_text-* -name "build.gradle" -exec sed -i '/jcenter()/d' {} + || true
 
     - name: Generate Custom Launcher Icons
       run: flutter pub run flutter_launcher_icons
