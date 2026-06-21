@@ -30,7 +30,6 @@ jobs:
     - name: Auto-generate Missing Android Files
       run: flutter create . --overwrite
 
-    # DITO NATIN PWERSAHANG ISUSULAT ANG CHOYNOTES CODE PARA HINDI MA-OVERWRITE
     - name: Inject ChoyNotes App Code
       run: |
         cat << 'EOF' > lib/main.dart
@@ -251,13 +250,17 @@ jobs:
           uses-material-design: true
         EOF
 
-    # I-SETUP ANG MGA PERMISSIONS SA ANDROIDMANIFEST PARA GUMANA ANG MIC
     - name: Setup Android Permissions
       run: |
         sed -i '/<manifest/a \    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.INTERNET" />' android/app/src/main/AndroidManifest.xml
 
     - name: Install Dependencies
       run: flutter pub get
+
+    # MATALINONG UTOS PARA BURAHIN ANG JCENTER ERROR SA SPEECH-TO-TEXT PLUGIN
+    - name: Patch Gradle for Speech-to-Text
+      run: |
+        find ~/.pub-cache/hosted/pub.dev/speech_to_text-* -name "build.gradle" -exec sed -i '/jcenter()/d' {} +
 
     - name: Build APK
       run: flutter build apk --release
