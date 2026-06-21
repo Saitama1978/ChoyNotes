@@ -32,7 +32,7 @@ jobs:
         rm -rf android ios web windows macos linux
         flutter create . --org com.choynotes.app --project-name choynotes
 
-    - name: Inject Ultimate All-In-One ChoyNotes App Code with Original Mic Icon
+    - name: Inject Ultimate All-In-One ChoyNotes App Code with Fixed Mic Layout
       run: |
         cat << 'EOF' > lib/main.dart
         import 'dart:io';
@@ -438,6 +438,7 @@ jobs:
                                             );
                                           },
                                         ),
+                                  const SizedBox(height: 80), // Padding para hindi matakpan ng Floating Mic button ang dulo ng listahan
                                 ],
                               ),
                             ),
@@ -508,38 +509,35 @@ jobs:
                                     )
                                   ],
                                 ),
+                                const SizedBox(height: 80), // Extra space para hindi matakpan ng floating mic icon ang inputs
                               ],
                             ),
                           ),
                         ],
                       ),
                     ),
-                    Container(
-                      padding: const EdgeInsets.only(bottom: 24),
-                      color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
-                      child: Center(
-                        child: GestureDetector(
-                          onTap: _listen,
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 300),
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: _isListening ? Colors.red : const Color(0xFF141E30),
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: _isListening ? Colors.red.withOpacity(0.4) : Colors.black38,
-                                  blurRadius: 12,
-                                  offset: const Offset(0, 4),
-                                )
-                              ],
-                            ),
-                            child: const Icon(Icons.mic, size: 32, color: Colors.white),
-                          ),
-                        ),
-                      ),
-                    ),
                   ],
+                ),
+                // ✨ FIX: Inilipat ang Mic Button sa Floating Action Button property para laging "clickable" at nakalutang sa ibabaw ng layout
+                floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+                floatingActionButton: GestureDetector(
+                  onTap: _listen,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 300),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: _isListening ? Colors.red : const Color(0xFF141E30), // Original Custom Dark Theme Icon Color mo
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: _isListening ? Colors.red.withOpacity(0.4) : Colors.black38,
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        )
+                      ],
+                    ),
+                    child: const Icon(Icons.mic, size: 32, color: Colors.white),
+                  ),
                 ),
               ),
             );
@@ -552,13 +550,12 @@ jobs:
         flutter pub add permission_handler path_provider speech_to_text google_generative_ai
         flutter pub add --dev flutter_launcher_icons
         
-        # Magdadagdag tayo ng configuration para sa app launcher icon sa ilalim ng pubspec.yaml
         cat << 'EOF' >> pubspec.yaml
         
         flutter_launcher_icons:
           android: "launcher_icon"
           ios: true
-          image_path: "assets/icon/icon.png" # ⚠️ PALITAN ITO KUNG IBA ANG PATH NG ICON MO SA REPO
+          image_path: "assets/icon/icon.png"
           min_sdk_android: 21
         EOF
 
