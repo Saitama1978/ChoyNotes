@@ -334,12 +334,63 @@ jobs:
         </manifest>
         EOF
 
+    - name: Force Modern Repositories in Android Settings
+      run: |
+        cat << 'EOF' > android/settings.gradle
+        pluginManagement {
+            def flutterSdkPath = {
+                def properties = new Properties()
+                def propertiesFile = new File(settingsDir, "local.properties")
+                if (propertiesFile.exists()) {
+                    propertiesFile.withReader("UTF-8") { reader -> properties.load(reader) }
+                }
+                def sdkPath = properties.getProperty("flutter.sdk")
+                assert sdkPath != null, "flutter.sdk not set in local.properties"
+                return sdkPath
+            }();
+
+            includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
+
+            repositories {
+                google()
+                mavenCentral()
+                gradlePluginPortal()
+            }
+        }
+
+        plugins {
+            id "dev.flutter.flutter-plugin-loader" version "1.0.0"
+            id "com.android.application" version "7.3.0" apply false
+            id "org.jetbrains.kotlin.android" version "1.7.10" apply false
+        }
+
+        include ":app"
+        EOF
+
+    - name: Force Project-Wide Repository Overrides (Kill JCenter Forever)
+      run: |
+        cat << 'EOF' >> android/build.gradle
+        allprojects {
+            buildscript {
+                repositories {
+                    google()
+                    mavenCentral()
+                }
+            }
+            repositories {
+                google()
+                mavenCentral()
+            }
+        }
+        EOF
+
     - name: Install Safe Dependencies
       run: flutter pub get
 
-    - name: Fix Modern Android Gradle Repository Conflict
+    - name: Deep Scrub Gradle Cache for Old Plugins
       run: |
         find ~/.pub-cache/hosted/pub.dev/speech_to_text-* -name "build.gradle" -exec sed -i '/jcenter()/d' {} +
+        find ~/.pub-cache/hosted/pub.dev/speech_to_text-* -name "build.gradle" -exec sed -i 's/maven { url "https:\/\/jcenter.bintray.com" }//g' {} +
 
     - name: Generate Custom Launcher Icons
       run: flutter pub run flutter_launcher_icons
