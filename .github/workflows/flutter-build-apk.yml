@@ -118,7 +118,6 @@ jobs:
           List<Map<String, String>> _savedNotes = [];
           List<Map<String, String>> _filteredNotes = [];
 
-          // ⚠️ Pwede mo itong palitan ng iyong Gemini API Key bukas paggising mo
           final String _geminiApiKey = "PALITAN_ITO_NG_IYONG_API_KEY";
 
           @override
@@ -544,7 +543,7 @@ jobs:
       run: flutter build apk --release
 
     - name: Upload APK Artifact
-      uses: actions/artifacts-upload@v4
+      uses: actions/upload-artifact@v4
       with:
         name: choynotes-pro-apk
         path: build/app/outputs/flutter-apk/app-release.apk
