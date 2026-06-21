@@ -331,11 +331,43 @@ jobs:
         </manifest>
         EOF
 
-    - name: Set Modern App Namespace and CompileSdkVersion
+    - name: Inject Valid Modern Kotlin build.gradle.kts
       run: |
-        sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 34/g' android/app/build.gradle
-        # Inilalagay ang modernong namespace property sa loob ng android {} block ng gradle file upang mawala ang manifest warning
-        sed -i '/android {/a \    namespace "com.choynotes.app"' android/app/build.gradle
+        cat << 'EOF' > android/app/build.gradle.kts
+        plugins {
+            id("com.android.application")
+            id("kotlin-android")
+            id("dev.flutter.flutter-gradle-plugin")
+        }
+
+        android {
+            namespace = "com.choynotes.app"
+            compileSdk = 34
+
+            compileOptions {
+                sourceCompatibility = JavaVersion.VERSION_17
+                targetCompatibility = JavaVersion.VERSION_17
+            }
+
+            kotlinOptions {
+                jvmTarget = "17"
+            }
+
+            defaultConfig {
+                applicationId = "com.choynotes.app"
+                minSdk = 21
+                targetSdk = 34
+                versionCode = 1
+                versionName = "1.0.0"
+            }
+
+            buildTypes {
+                release {
+                    signingConfig = signingConfigs.getByName("debug")
+                }
+            }
+        }
+        EOF
 
     - name: Fetch Flutter Dependencies
       run: flutter pub get
