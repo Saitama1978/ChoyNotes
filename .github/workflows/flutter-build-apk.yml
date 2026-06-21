@@ -536,11 +536,26 @@ jobs:
     - name: Generate Custom Launcher Icons
       run: flutter pub run flutter_launcher_icons
 
-    - name: Build Clean APK
-      run: flutter build apk --release
+    - name: Build Clean APK with Dynamic Path Search
+      run: |
+        # Tatakbo ang gradle build release at hindi tayo aasa sa maling default folder path ng flutter CLI.
+        flutter build apk --release || true
+
+    - name: Locate and Stage APK for Upload
+      run: |
+        mkdir -p final_apk_output
+        # Hahanapin natin kung nasaan ang app-release.apk kahit saan pa ito nilagay ng bagong Kotlin Gradle script
+        FOUND_APK=$(find build/ -name "*release.apk" | head -n 1)
+        if [ -z "$FOUND_APK" ]; then
+          echo "Error: Wala pa ring nahanap na APK. May mali sa compilation."
+          exit 1
+        else
+          echo "Nahanap ang APK sa: $FOUND_APK"
+          cp "$FOUND_APK" final_apk_output/ChoyNotes-Release.apk
+        fi
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
         name: ChoyNotes-Release-APK
-        path: build/app/outputs/flutter-apk/app-release.apk
+        path: final_apk_output/ChoyNotes-Release.apk
