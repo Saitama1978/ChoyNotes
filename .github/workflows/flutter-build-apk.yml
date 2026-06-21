@@ -285,7 +285,7 @@ jobs:
                         const SizedBox(width: 6),
                         RichText(
                           text: const TextSpan(
-                            text: 'Architected by: ',
+                            text: 'Program by: ',
                             style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
                             children: [
                               TextSpan(
