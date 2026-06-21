@@ -56,10 +56,17 @@ jobs:
 
         class _ChoyNotesAppState extends State<ChoyNotesApp> {
           bool _isDarkMode = true;
+          String _globalApiKey = ""; // Dito ise-save ang API Key mula sa Settings UI
 
           void toggleTheme() {
             setState(() {
               _isDarkMode = !_isDarkMode;
+            });
+          }
+
+          void updateApiKey(String newKey) {
+            setState(() {
+              _globalApiKey = newKey;
             });
           }
 
@@ -85,7 +92,12 @@ jobs:
                 ),
                 scaffoldBackgroundColor: const Color(0xFF0F172A),
               ),
-              home: HomeScreen(onThemeToggle: toggleTheme, isDarkMode: _isDarkMode),
+              home: HomeScreen(
+                onThemeToggle: toggleTheme, 
+                isDarkMode: _isDarkMode,
+                apiKey: _globalApiKey,
+                onApiKeySaved: updateApiKey,
+              ),
             );
           }
         }
@@ -93,7 +105,16 @@ jobs:
         class HomeScreen extends StatefulWidget {
           final VoidCallback onThemeToggle;
           final bool isDarkMode;
-          const HomeScreen({super.key, required this.onThemeToggle, required this.isDarkMode});
+          final String apiKey;
+          final ValueChanged<String> onApiKeySaved;
+
+          const HomeScreen({
+            super.key, 
+            required this.onThemeToggle, 
+            required this.isDarkMode,
+            required this.apiKey,
+            required this.onApiKeySaved,
+          });
 
           @override
           State<HomeScreen> createState() => _HomeScreenState();
@@ -107,6 +128,7 @@ jobs:
           final TextEditingController _textController = TextEditingController();
           final TextEditingController _searchController = TextEditingController();
           final TextEditingController _aiQueryController = TextEditingController();
+          final TextEditingController _keyInputController = TextEditingController();
 
           String _finalizedText = "";
           String _interimText = "";
@@ -118,15 +140,13 @@ jobs:
           List<Map<String, String>> _savedNotes = [];
           List<Map<String, String>> _filteredNotes = [];
 
-          // 🔑 INJECTED: Awtomatiko nang nakalagay rito ang iyong Gemini API Key para sa AI features
-          final String _geminiApiKey = "AQ.Ab8RN6JOOuXW-E-q7CN0Je1OBsyjO6TAZC2xdYdG4YcPSAC_sQ";
-
           @override
           void initState() {
             super.initState();
             _speech = stt.SpeechToText();
             _loadNotes();
             _searchController.addListener(_filterNotes);
+            _keyInputController.text = widget.apiKey;
           }
 
           void _filterNotes() {
@@ -143,9 +163,9 @@ jobs:
           }
 
           void _askAI(String contextText, String userQuestion) async {
-            if (_geminiApiKey.isEmpty) {
+            if (widget.apiKey.isEmpty) {
               setState(() {
-                _aiResponse = "Walang nahanap na Gemini API Key.";
+                _aiResponse = "Paki-set muna ang iyong Gemini API Key sa Settings (⚙️ icon sa itaas).";
               });
               return;
             }
@@ -162,7 +182,7 @@ jobs:
             });
 
             try {
-              final model = GenerativeModel(model: 'gemini-1.5-flash', apiKey: _geminiApiKey);
+              final model = GenerativeModel(model: 'gemini-1.5-flash', apiKey: widget.apiKey);
               final prompt = "Context:\n$contextText\n\nQuestion: $userQuestion";
               final content = [Content.text(prompt)];
               final response = await model.generateContent(content);
@@ -171,13 +191,53 @@ jobs:
               });
             } catch (e) {
               setState(() {
-                _aiResponse = "Error sa AI: $e";
+                _aiResponse = "Error sa AI: $e\n\nPakisiguro na tama ang API Key mo.";
               });
             } finally {
               setState(() {
                 _isAiLoading = false;
               });
             }
+          }
+
+          void _showSettingsDialog() {
+            showDialog(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text("Gemini AI Settings"),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text("I-paste rito ang iyong Gemini API Key upang gumana ang AI Assistant:"),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _keyInputController,
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        labelText: "API Key",
+                        hintText: "AIzaSy...",
+                      ),
+                    ),
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text("Cancel"),
+                  ),
+                  ElevatedButton(
+                    onPressed: () {
+                      widget.onApiKeySaved(_keyInputController.text.trim());
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('API Key updated successfully!')),
+                      );
+                    },
+                    child: const Text("Save Key"),
+                  ),
+                ],
+              ),
+            );
           }
 
           void _initAndStartSpeech() async {
@@ -298,6 +358,7 @@ jobs:
             _textController.dispose();
             _searchController.dispose();
             _aiQueryController.dispose();
+            _keyInputController.dispose();
             super.dispose();
           }
 
@@ -314,6 +375,10 @@ jobs:
                   centerTitle: true,
                   elevation: 0,
                   actions: [
+                    IconButton(
+                      icon: const Icon(Icons.settings, color: Colors.white),
+                      onPressed: _showSettingsDialog,
+                    ),
                     IconButton(
                       icon: Icon(isDark ? Icons.wb_sunny : Icons.nightlight_round, color: Colors.white),
                       onPressed: widget.onThemeToggle,
