@@ -32,7 +32,7 @@ jobs:
         rm -rf android ios web windows macos linux
         flutter create . --org com.choynotes.app --project-name choynotes
 
-    - name: Inject Ultimate All-In-One ChoyNotes App Code with Notta AI Tab 2
+    - name: Inject Ultimate All-In-One ChoyNotes App Code with Original Mic Icon
       run: |
         cat << 'EOF' > lib/main.dart
         import 'dart:io';
@@ -471,8 +471,12 @@ jobs:
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                                   children: [
-                                    ElevatedButton.icon(onPressed: () => _askAI(_textController.text, "Ibigay ang buod ng text na ito sa maiikling bullet points."), icon: const Icon(Icons.summarize), label: const Text("I-Summary")),
-                                    ElevatedButton.icon(onPressed: () => _askAI(_textController.text, "Ano ang mahahalagang Action Items dito?"), icon: const Icon(Icons.task_alt), label: const Text("Action Items")),
+                                    ButtonTheme(
+                                      child: ElevatedButton.icon(onPressed: () => _askAI(_textController.text, "Ibigay ang buod ng text na ito sa maiikling bullet points."), icon: const Icon(Icons.summarize), label: const Text("I-Summary")),
+                                    ),
+                                    ButtonTheme(
+                                      child: ElevatedButton.icon(onPressed: () => _askAI(_textController.text, "Ano ang mahahalagang Action Items dito?"), icon: const Icon(Icons.task_alt), label: const Text("Action Items")),
+                                    ),
                                   ],
                                 ),
                                 const SizedBox(height: 12),
@@ -512,17 +516,25 @@ jobs:
                     ),
                     Container(
                       padding: const EdgeInsets.only(bottom: 24),
+                      color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
                       child: Center(
                         child: GestureDetector(
                           onTap: _listen,
-                          child: Container(
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 300),
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
-                              color: _isListening ? Colors.red : const Color(0xFF0F172A),
+                              color: _isListening ? Colors.red : const Color(0xFF141E30),
                               shape: BoxShape.circle,
-                              boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 4))],
+                              boxShadow: [
+                                BoxShadow(
+                                  color: _isListening ? Colors.red.withOpacity(0.4) : Colors.black38,
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 4),
+                                )
+                              ],
                             ),
-                            child: Icon(_isListening ? Icons.stop : Icons.mic, size: 30, color: Colors.white),
+                            child: const Icon(Icons.mic, size: 32, color: Colors.white),
                           ),
                         ),
                       ),
@@ -535,9 +547,23 @@ jobs:
         }
         EOF
 
-    - name: Inject Packages into pubspec.yaml
+    - name: Inject Packages and App Icon Config into pubspec.yaml
       run: |
         flutter pub add permission_handler path_provider speech_to_text google_generative_ai
+        flutter pub add --dev flutter_launcher_icons
+        
+        # Magdadagdag tayo ng configuration para sa app launcher icon sa ilalim ng pubspec.yaml
+        cat << 'EOF' >> pubspec.yaml
+        
+        flutter_launcher_icons:
+          android: "launcher_icon"
+          ios: true
+          image_path: "assets/icon/icon.png" # ⚠️ PALITAN ITO KUNG IBA ANG PATH NG ICON MO SA REPO
+          min_sdk_android: 21
+        EOF
+
+    - name: Generate App Launcher Icons
+      run: flutter pub run flutter_launcher_icons
 
     - name: Build APK
       run: flutter build apk --release
