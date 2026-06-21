@@ -27,8 +27,11 @@ jobs:
       with:
         channel: 'stable'
 
-    - name: Auto-generate Clean Modern Android Project
-      run: flutter create . --overwrite --org com.choynotes.app
+    - name: Create Fresh Clean App Directory
+      run: |
+        # Lilinisin natin ang workspace para walang lumang gradle settings na makagulo
+        rm -rf android ios web windows macos linux
+        flutter create . --org com.choynotes.app --project-name choynotes
 
     - name: Inject Premium UI ChoyNotes App Code
       run: |
@@ -489,7 +492,7 @@ jobs:
         </manifest>
         EOF
 
-    - name: Global Subprojects SDK Safety Force-Override
+    - name: Force Specific SDK Version Overrides on Subprojects
       run: |
         cat << 'EOF' >> android/build.gradle
 
@@ -507,55 +510,29 @@ jobs:
         }
         EOF
 
-    - name: Force Upgrade Android App Build Gradle Versions
+    - name: Force Hardcoded SDK Versions in App Build
       run: |
         if [ -f "android/app/build.gradle" ]; then
           sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 34/g' android/app/build.gradle
           sed -i 's/targetSdkVersion flutter.targetSdkVersion/targetSdkVersion 34/g' android/app/build.gradle
-        elif [ -f "android/app/build.gradle.kts" ]; then
-          sed -i 's/compileSdk = .*/compileSdk = 34/g' android/app/build.gradle.kts
-          sed -i 's/targetSdk = .*/targetSdk = 34/g' android/app/build.gradle.kts
-        fi
-
-    - name: Safely Inject Namespace into Flutter-Generated Build Script
-      run: |
-        if [ -f "android/app/build.gradle.kts" ]; then
-          sed -i '/android {/a \    namespace = "com.choynotes.app"' android/app/build.gradle.kts
-        elif [ -f "android/app/build.gradle" ]; then
           sed -i '/android {/a \    namespace "com.choynotes.app"' android/app/build.gradle
         fi
 
     - name: Fetch Flutter Dependencies
       run: flutter pub get
 
-    - name: Global Gradle Safety Patch (Fix JCenter & Buildscript Errors)
+    - name: Patch Third-Party Repositories (Fix JCenter Errors)
       run: |
         find ~/.pub-cache/hosted/pub.dev/speech_to_text-* -name "build.gradle" -exec sed -i 's/jcenter()/mavenCentral()/g' {} + || true
-        find ~/.pub-cache/hosted/pub.dev/speech_to_text-* -name "build.gradle" -exec sed -i 's/maven { url "https:\/\/jcenter.bintray.com" }/mavenCentral()/g' {} + || true
 
     - name: Generate Custom Launcher Icons
       run: flutter pub run flutter_launcher_icons
 
-    - name: Build Clean APK with Dynamic Path Search
-      run: |
-        # Tatakbo ang gradle build release at hindi tayo aasa sa maling default folder path ng flutter CLI.
-        flutter build apk --release || true
-
-    - name: Locate and Stage APK for Upload
-      run: |
-        mkdir -p final_apk_output
-        # Hahanapin natin kung nasaan ang app-release.apk kahit saan pa ito nilagay ng bagong Kotlin Gradle script
-        FOUND_APK=$(find build/ -name "*release.apk" | head -n 1)
-        if [ -z "$FOUND_APK" ]; then
-          echo "Error: Wala pa ring nahanap na APK. May mali sa compilation."
-          exit 1
-        else
-          echo "Nahanap ang APK sa: $FOUND_APK"
-          cp "$FOUND_APK" final_apk_output/ChoyNotes-Release.apk
-        fi
+    - name: Build Clean APK
+      run: flutter build apk --release
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
         name: ChoyNotes-Release-APK
-        path: final_apk_output/ChoyNotes-Release.apk
+        path: build/app/outputs/flutter-apk/app-release.apk
