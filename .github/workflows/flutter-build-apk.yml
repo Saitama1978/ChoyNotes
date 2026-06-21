@@ -29,7 +29,6 @@ jobs:
 
     - name: Fresh Flutter Boilerplate Generation
       run: |
-        # Dine-delete ang sirang dependencies at nagre-rebuild ng kumpletong structural native directories
         rm -rf android ios web windows macos linux pubspec.yaml
         flutter create . --org com.saitama.choynotes --project-name choynotes
 
@@ -439,7 +438,7 @@ jobs:
                                             );
                                           },
                                         ),
-                                  const SizedBox(height: 120), // Mas malaking clearance para sa Floating Mic Button
+                                  const SizedBox(height: 120),
                                 ],
                               ),
                             ),
@@ -513,19 +512,18 @@ jobs:
                     ),
                   ],
                 ),
-                // 🛠️ FIX: GINAMPANAN NG SIGURADONG SARIWANG TAP TARGETS AT PADDING LABAN SA SYSTEM GESTURES
                 floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
                 floatingActionButton: Padding(
-                  padding: const EdgeInsets.bottom: 40.0, // Mas mataas para iwas-sabit sa soft navigation keys o full screen controls
+                  padding: const EdgeInsets.only(bottom: 40.0), // FIX: Tama na ang syntax dito
                   child: SizedBox(
-                    width: 85, // Mas malaking container box para madaling tamaan ng thumb
+                    width: 85,
                     height: 85,
                     child: FloatingActionButton(
                       onPressed: _listen,
                       elevation: 12,
                       shape: const CircleBorder(),
                       backgroundColor: _isListening ? Colors.red : const Color(0xFF1E293B),
-                      child: const Icon(Icons.mic, size: 40, color: Colors.white), // Pinalaki ang target icon
+                      child: const Icon(Icons.mic, size: 40, color: Colors.white),
                     ),
                   ),
                 ),
@@ -537,7 +535,6 @@ jobs:
 
     - name: Configure MicroPhone Permissions on Recreated Manifest
       run: |
-        # Awtomatikong isinusulat ang hardware parameters para gumana ang live recorder permissions
         sed -i '/<\/manifest>/i \    <uses-permission android:name="android.permission.RECORD_AUDIO" \/>\n    <uses-permission android:name="android.permission.INTERNET" \/>' android/app/src/main/AndroidManifest.xml
 
     - name: Inject Packages and Launch Configuration
