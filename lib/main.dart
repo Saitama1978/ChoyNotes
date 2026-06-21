@@ -13,6 +13,7 @@ class ChoyNotesApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'ChoyNotes',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         primarySwatch: Colors.blue,
         useMaterial3: true,
@@ -72,11 +73,13 @@ class _MeetingRecorderScreenState extends State<MeetingRecorderScreen> {
         title: const Text('ChoyNotes 🎙️'),
         backgroundColor: Colors.blue[700],
         foregroundColor: Colors.white,
+        centerTitle: true,
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
+            // Dito lalabas ang text ng transcription
             Expanded(
               child: Container(
                 width: double.infinity,
@@ -94,7 +97,41 @@ class _MeetingRecorderScreenState extends State<MeetingRecorderScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 15),
+
+            // DEVELOPER CARD SECTION
+            Card(
+              elevation: 2,
+              color: Colors.blue.shade50,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.code, color: Colors.blue, size: 20),
+                    const SizedBox(width: 8),
+                    RichText(
+                      text: const TextSpan(
+                        style: TextStyle(fontSize: 14, color: Colors.black70),
+                        children: [
+                          TextSpan(text: 'Developer: '),
+                          TextSpan(
+                            text: 'Renante Fullo',
+                            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 15),
+
+            // MGA BUTTONS (RECORD AT SAVE)
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
