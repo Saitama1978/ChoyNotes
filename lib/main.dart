@@ -18,26 +18,41 @@ class ChoyNotesApp extends StatefulWidget {
 }
 
 class _ChoyNotesAppState extends State<ChoyNotesApp> {
+  bool _isDarkMode = false; // Nilagyan ko na ng working toggle logic para sa moon/sun icon mo
+
+  void _toggleTheme() {
+    setState(() {
+      _isDarkMode = !_isDarkMode;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'ChoyNotes Pro',
       debugShowCheckedModeBanner: false,
+      themeMode: _isDarkMode ? ThemeMode.dark : ThemeMode.light,
       theme: ThemeData(
         useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF0F172A),
-          brightness: Brightness.dark, // Pinanatiling Dark Mode gaya ng screenshot mo
-        ),
-        scaffoldBackgroundColor: const Color(0xFF0F172A),
+        brightness: Brightness.light,
+        scaffoldBackgroundColor: const Color(0xFFF8FAFC),
+        appBarTheme: const AppBarTheme(backgroundColor: Color(0xFF0F172A)),
       ),
-      home: const HomeScreen(),
+      darkTheme: ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: const Color(0xFF0F172A),
+        appBarTheme: const AppBarTheme(backgroundColor: Color(0xFF0F172A)),
+      ),
+      home: HomeScreen(onThemeToggle: _toggleTheme, isDarkMode: _isDarkMode),
     );
   }
 }
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final VoidCallback onThemeToggle;
+  final bool isDarkMode;
+  const HomeScreen({super.key, required this.onThemeToggle, required this.isDarkMode});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -62,7 +77,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Map<String, String>> _savedNotes = [];
   List<Map<String, String>> _filteredNotes = [];
 
-  // ⚠️ ILAGAY ANG IYONG GEMINI API KEY DITO
+  // ⚠️ PAALALA: Palitan mo na lang ito ng Gemini API Key mo bukas paggising mo
   final String _geminiApiKey = "PALITAN_ITO_NG_IYONG_API_KEY";
 
   @override
@@ -86,18 +101,18 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  // --- AI LOGIC ---
+  // --- AI PROCESSOR ---
   void _askAI(String contextText, String userQuestion) async {
     if (_geminiApiKey == "PALITAN_ITO_NG_IYONG_API_KEY" || _geminiApiKey.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error: Mangyaring ilagay muna ang iyong Gemini API Key sa code.')),
-      );
+      setState(() {
+        _aiResponse = "Pakilagay muna ang iyong Gemini API Key sa code bukas.";
+      });
       return;
     }
     if (contextText.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Walang text o transkripsyon na pwedeng suriin ang AI.')),
-      );
+      setState(() {
+        _aiResponse = "Walang text sa editor na pwedeng suriin ng AI.";
+      });
       return;
     }
 
@@ -108,25 +123,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
     try {
       final model = GenerativeModel(model: 'gemini-1.5-flash', apiKey: _geminiApiKey);
-      final prompt = """
-Ikaw ay si ChoyNotes AI, isang matalinong katulong sa transkripsyon. 
-Ito ang nilalaman ng aking note:
-\"\"\"
-$contextText
-\"\"\"
-
-Batay sa transkripsyon sa itaas, sagutin ang tanong ng user sa Tagalog/English:
-$userQuestion
-""";
-
+      final prompt = "Ito ang aking note:\n$contextText\n\nTanong: $userQuestion";
       final content = [Content.text(prompt)];
       final response = await model.generateContent(content);
       setState(() {
-        _aiResponse = response.text ?? "Paumanhin, hindi ko nakuha ang sagot.";
+        _aiResponse = response.text ?? "Walang sagot mula sa AI.";
       });
     } catch (e) {
       setState(() {
-        _aiResponse = "Error sa AI: $e";
+        _aiResponse = "Error: $e";
       });
     } finally {
       setState(() {
@@ -135,7 +140,7 @@ $userQuestion
     }
   }
 
-  // --- NOTTA CONTINUOUS SPEECH LOGIC ---
+  // --- NOTTA CONTINUOUS SPEECH LOGIC (HINDI NAPUPUTOL) ---
   void _initAndStartSpeech() async {
     bool available = await _speech.initialize(
       onError: (val) {
@@ -259,93 +264,91 @@ $userQuestion
 
   @override
   Widget build(BuildContext context) {
-    // DITO INILAGAY ANG TAB CONTROLLER PARA MAGKAROON NG TAB 1 AT TAB 2
+    bool isDark = widget.isDarkMode;
+
+    // ITO ANG SUMASAGOT SA TANONG MO: DefaultTabController ang magpapakita ng Tab 1 at Tab 2
     return DefaultTabController(
-      length: 2, 
+      length: 2,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('ChoyNotes Pro', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-          backgroundColor: const Color(0xFF0F172A),
           centerTitle: true,
+          elevation: 0,
           actions: [
             IconButton(
-              icon: const Icon(Icons.wb_sunny, color: Colors.white),
-              onPressed: () {}, // Theme switch placeholder mula sa screenshot mo
+              icon: Icon(isDark ? Icons.wb_sunny : Icons.nightlight_round, color: Colors.white),
+              onPressed: widget.onThemeToggle,
             ),
           ],
-          // Heto ang navigation sa ilalim ng title para makalipat sa AI Tab
+          // HETO ANG NAV BAR PARA SA TAB 2
           bottom: const TabBar(
             labelColor: Colors.blueAccent,
             unselectedLabelColor: Colors.white60,
             indicatorColor: Colors.blueAccent,
             tabs: [
-              Tab(icon: Icon(Icons.mic), text: "Transcribe"),
-              Tab(icon: Icon(Icons.psychology), text: "AI Assistant"),
+              Tab(icon: Icon(Icons.mic, color: Colors.white), text: "Transcribe"),
+              Tab(icon: Icon(Icons.psychology, color: Colors.white), text: "AI Assistant"),
             ],
           ),
         ),
         body: Column(
           children: [
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 8.0),
-              child: Text("Program by: Renante Fullo", style: TextStyle(color: Colors.white70, fontSize: 14)),
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 8.0),
+              width: double.infinity,
+              color: isDark ? const Color(0xFF1E293B) : Colors.grey.shade200,
+              child: Text(
+                "Program by: Renante Fullo",
+                textAlign:尊Center,
+                style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 14, fontWeight: FontWeight.w500),
+              ),
             ),
-            
-            // Dito naghahati ang Screen sa dalawang magkaibang Tab view
             Expanded(
               child: TabBarView(
                 children: [
-                  
-                  // ================= TAB 1: TRANSCRIBE (ANG DESIGN MO SA SCREENSHOT) =================
+                  // --- TAB 1: TRANSCRIBE ---
                   SingleChildScrollView(
                     child: Padding(
                       padding: const EdgeInsets.all(16.0),
                       child: Column(
                         children: [
-                          // Dropdown Category
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Text("Select Category:", style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.w500)),
+                              Text("Select Category:", style: TextStyle(fontSize: 16, color: isDark ? Colors.white : Colors.black87, fontWeight: FontWeight.w500)),
                               DropdownButton<String>(
                                 value: _selectedCategory,
-                                dropdownColor: const Color(0xFF1E293B),
+                                dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+                                style: TextStyle(color: isDark ? Colors.white : Colors.black87),
                                 items: _categories.map((String value) {
-                                  return DropdownMenuItem<String>(value: value, child: Text(value, style: const TextStyle(color: Colors.white)));
+                                  return DropdownMenuItem<String>(value: value, child: Text(value));
                                 }).toList(),
-                                onChanged: (newValue) {
-                                  setState(() {
-                                    _selectedCategory = newValue!;
-                                  });
-                                },
+                                onChanged: (newValue) => setState(() => _selectedCategory = newValue!),
                               ),
                             ],
                           ),
                           const SizedBox(height: 16),
-                          
-                          // Input/Transcription Box gaya ng nasa screenshot mo
                           Container(
                             height: 180,
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              border: Border.all(color: Colors.white60),
+                              border: Border.all(color: isDark ? Colors.white60 : Colors.black38),
                               borderRadius: BorderRadius.circular(16),
+                              color: isDark ? Colors.transparent : Colors.white,
                             ),
                             child: TextField(
                               controller: _textController,
                               maxLines: null,
                               readOnly: _isListening,
-                              style: const TextStyle(color: Colors.white, fontSize: 16),
-                              decoration: const InputDecoration(
+                              style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 16),
+                              decoration: InputDecoration(
                                 border: InputBorder.none,
-                                hintText: "Magsimulang mag-record...",
-                                hintStyle: TextStyle(color: Colors.white38),
+                                hintText: "Tap the microphone below and speak to transcribe...",
+                                hintStyle: TextStyle(color: isDark ? Colors.white38 : Colors.black38),
                               ),
                             ),
                           ),
                           const SizedBox(height: 16),
-                          
-                          // Save Button
                           SizedBox(
                             width: double.infinity,
                             height: 50,
@@ -360,27 +363,22 @@ $userQuestion
                             ),
                           ),
                           const SizedBox(height: 16),
-                          
-                          // Search Box mula sa screenshot mo
                           TextField(
                             controller: _searchController,
-                            style: const TextStyle(color: Colors.white),
+                            style: TextStyle(color: isDark ? Colors.white : Colors.black87),
                             decoration: InputDecoration(
-                              prefixIcon: const Icon(Icons.search, color: Colors.white60),
+                              prefixIcon: Icon(Icons.search, color: isDark ? Colors.white60 : Colors.black45),
                               hintText: "Search notes...",
-                              hintStyle: const TextStyle(color: Colors.white38),
-                              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.white60)),
+                              hintStyle: TextStyle(color: isDark ? Colors.white38 : Colors.black38),
+                              fillColor: isDark ? Colors.transparent : Colors.white,
+                              filled: true,
+                              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: isDark ? Colors.white60 : Colors.black38)),
                               focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.blueAccent)),
                             ),
                           ),
                           const SizedBox(height: 20),
-                          
-                          // List of Saved Notes
                           _filteredNotes.isEmpty
-                              ? const Padding(
-                                  padding: EdgeInsets.only(top: 40.0),
-                                  child: Text("No notes found.", style: TextStyle(color: Colors.white38)),
-                                )
+                              ? const Padding(padding: EdgeInsets.only(top: 40.0), child: Text("No notes found.", style: TextStyle(color: Colors.grey)))
                               : ListView.builder(
                                   shrinkWrap: true,
                                   physics: const NeverScrollableScrollPhysics(),
@@ -388,17 +386,16 @@ $userQuestion
                                   itemBuilder: (context, index) {
                                     final item = _filteredNotes[index];
                                     return Card(
-                                      color: const Color(0xFF1E293B),
-                                      margin: const EdgeInsets.symmetric(vertical: 4),
+                                      color: isDark ? const Color(0xFF1E293B) : Colors.white,
                                       child: ListTile(
-                                        title: Text(item['text'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white)),
-                                        subtitle: Text("${item['category']} • ${item['date']}", style: const TextStyle(color: Colors.white60)),
-                                        trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.white60),
+                                        title: Text(item['text'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
+                                        subtitle: Text("${item['category']} • ${item['date']}", style: const TextStyle(color: Colors.grey)),
+                                        trailing: const Icon(Icons.arrow_forward_ios, size: 14),
                                         onTap: () {
                                           setState(() {
                                             _textController.text = item['text'] ?? '';
                                             _finalizedText = item['text'] ?? '';
-                                            _aiResponse = "Naka-load na ang note. Lumipat sa AI Assistant Tab para magtanong.";
+                                            _aiResponse = "Naka-load na ang note. Magpunta sa AI Assistant Tab.";
                                           });
                                         },
                                       ),
@@ -410,7 +407,7 @@ $userQuestion
                     ),
                   ),
 
-                  // ================= TAB 2: AI ASSISTANT (ANG BAGONG NOTTA AI FEATURE) =================
+                  // --- TAB 2: AI ASSISTANT ---
                   Padding(
                     padding: const EdgeInsets.all(16.0),
                     child: Column(
@@ -419,16 +416,16 @@ $userQuestion
                           child: Container(
                             width: double.infinity,
                             padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(color: const Color(0xFF1E293B), borderRadius: BorderRadius.circular(12)),
+                            decoration: BoxDecoration(color: isDark ? const Color(0xFF1E293B) : Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade300)),
                             child: SingleChildScrollView(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   const Text("Sagot ng AI:", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent, fontSize: 16)),
-                                  const Divider(color: Colors.white24),
+                                  const Divider(),
                                   _isAiLoading 
                                     ? const Center(child: Padding(padding: EdgeInsets.only(top: 20), child: CircularProgressIndicator()))
-                                    : Text(_aiResponse.isEmpty ? "Pumili ng note o mag-transcribe muna, pagkatapos ay magtanong ka rito sa AI." : _aiResponse, style: const TextStyle(fontSize: 15, color: Colors.white, height: 1.5)),
+                                    : Text(_aiResponse.isEmpty ? "Pumili ng note o mag-transcribe muna, tapos magtanong ka rito." : _aiResponse, style: TextStyle(fontSize: 15, color: isDark ? Colors.white : Colors.black87, height: 1.5)),
                                 ],
                               ),
                             ),
@@ -438,16 +435,8 @@ $userQuestion
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                           children: [
-                            ElevatedButton.icon(
-                              onPressed: () => _askAI(_textController.text, "Ibigay ang buod ng transkripsyon na ito gamit ang maikling bullet points."),
-                              icon: const Icon(Icons.summarize),
-                              label: const Text("I-Summary"),
-                            ),
-                            ElevatedButton.icon(
-                              onPressed: () => _askAI(_textController.text, "Ano ang mga kailangang gawin o Action Items batay rito?"),
-                              icon: const Icon(Icons.task_alt),
-                              label: const Text("Action Items"),
-                            ),
+                            ElevatedButton.icon(onPressed: () => _askAI(_textController.text, "Ibigay ang buod ng text na ito sa maiikling bullet points."), icon: const Icon(Icons.summarize), label: const Text("I-Summary")),
+                            ElevatedButton.icon(onPressed: () => _askAI(_textController.text, "Ano ang mahahalagang Action Items dito?"), icon: const Icon(Icons.task_alt), label: const Text("Action Items")),
                           ],
                         ),
                         const SizedBox(height: 12),
@@ -456,11 +445,11 @@ $userQuestion
                             Expanded(
                               child: TextField(
                                 controller: _aiQueryController,
-                                style: const TextStyle(color: Colors.white),
+                                style: TextStyle(color: isDark ? Colors.white : Colors.black87),
                                 decoration: InputDecoration(
-                                  hintText: "Magtanong sa AI tungkol sa iyong note...",
-                                  hintStyle: const TextStyle(color: Colors.white38),
-                                  fillColor: const Color(0xFF1E293B),
+                                  hintText: "Magtanong sa AI...",
+                                  hintStyle: const TextStyle(color: Colors.grey),
+                                  fillColor: isDark ? const Color(0xFF0F172A) : Colors.grey.shade200,
                                   filled: true,
                                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
                                   contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
@@ -485,20 +474,18 @@ $userQuestion
                 ],
               ),
             ),
-            
-            // Ang Mic button sa pinakababa mula sa iyong screenshot
+            // Floating Microphone controller button
             Container(
               padding: const EdgeInsets.only(bottom: 24),
-              color: const Color(0xFF0F172A),
               child: Center(
                 child: GestureDetector(
                   onTap: _listen,
                   child: Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: _isListening ? Colors.red : const Color(0xFF1E293B),
+                      color: _isListening ? Colors.red : const Color(0xFF0F172A),
                       shape: BoxShape.circle,
-                      boxShadow: [BoxShadow(color: Colors.black25, blurRadius: 10, offset: const Offset(0, 4))],
+                      boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10, offset: Offset(0, 4))],
                     ),
                     child: Icon(_isListening ? Icons.stop : Icons.mic, size: 30, color: Colors.white),
                   ),
