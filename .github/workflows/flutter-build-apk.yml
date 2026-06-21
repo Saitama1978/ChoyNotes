@@ -16,24 +16,24 @@ jobs:
     - name: Checkout Repository
       uses: actions/checkout@v4
 
-     Berk - name: Set up Java
+    - name: Set up Java
       uses: actions/setup-java@v4
       with:
         distribution: 'zulu'
         java-version: '17'
 
-     Berk - name: Set up Flutter
+    - name: Set up Flutter
       uses: subosito/flutter-action@v2
       with:
         channel: 'stable'
 
-     Berk - name: Install Dependencies
+    - name: Install Dependencies
       run: flutter pub get
 
-     Berk - name: Build APK
+    - name: Build APK
       run: flutter build apk --release
 
-     Berk - name: Upload APK Artifact
+    - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
         name: ChoyNotes-Release-APK
