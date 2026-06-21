@@ -290,7 +290,7 @@ jobs:
                   return pw.Padding(
                     padding: const pw.EdgeInsets.all(24),
                     child: pw.Column(
-                      cross: pw.CrossAxisAlignment.start,
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
                       children: [
                         pw.Text('ChoyNotes Pro Document Report', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
                         pw.Divider(),
