@@ -172,7 +172,6 @@ jobs:
             });
           }
 
-          // 🛠️ PINALAWAK AT FIXED NA AI RESPONSE METHOD
           void _askAI(String contextText, String userQuestion, {bool isDirectPrompt = false}) async {
             final targetKey = widget.apiKey.trim();
 
@@ -196,7 +195,6 @@ jobs:
             });
 
             try {
-              // Standard initialization para sa Google Generative AI
               final model = GenerativeModel(
                 model: 'gemini-1.5-flash', 
                 apiKey: targetKey,
@@ -217,7 +215,7 @@ jobs:
               });
             } catch (e) {
               setState(() {
-                _aiResponse = "Error sa AI: $e\n\nSiguraduhing balido ang iyong API Key at may internet connection ang device.";
+                _aiResponse = "Error sa AI: $e\n\nSiguraduhing balido ang iyong API Key.";
               });
             } finally {
               setState(() {
@@ -587,7 +585,7 @@ jobs:
                                     decoration: BoxDecoration(color: isDark ? const Color(0xFF1E293B) : Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade300)),
                                     child: SingleChildScrollView(
                                       child: Column(
-                                        cross         : CrossAxisAlignment.start,
+                                        crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
                                           const Text("Sagot ng AI:", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent, fontSize: 16)),
                                           const Divider(),
