@@ -135,6 +135,9 @@ jobs:
           String _aiResponse = "";
           bool _isAiLoading = false;
 
+          // ✨ State para sa pag-track kung may ine-edit na note
+          int? _editingIndex; 
+
           String _selectedCategory = 'General';
           final List<String> _categories = ['General', 'School', 'Work', 'Personal'];
           List<Map<String, String>> _savedNotes = [];
@@ -147,6 +150,14 @@ jobs:
             _loadNotes();
             _searchController.addListener(_filterNotes);
             _keyInputController.text = widget.apiKey;
+          }
+
+          @override
+          void didUpdateWidget(covariant HomeScreen oldWidget) {
+            super.didUpdateWidget(oldWidget);
+            if (oldWidget.apiKey != widget.apiKey) {
+              _keyInputController.text = widget.apiKey;
+            }
           }
 
           void _filterNotes() {
@@ -163,7 +174,9 @@ jobs:
           }
 
           void _askAI(String contextText, String userQuestion) async {
-            if (widget.apiKey.isEmpty) {
+            final targetKey = widget.apiKey.trim();
+
+            if (targetKey.isEmpty) {
               setState(() {
                 _aiResponse = "Paki-set muna ang iyong Gemini API Key sa Settings (⚙️ icon sa itaas).";
               });
@@ -182,8 +195,7 @@ jobs:
             });
 
             try {
-              // ✨ FIXED: Ginawang stable 'gemini-pro' para hindi magka-mismatch sa beta endpoint
-              final model = GenerativeModel(model: 'gemini-pro', apiKey: widget.apiKey);
+              final model = GenerativeModel(model: 'gemini-1.5-flash', apiKey: targetKey);
               final prompt = "Context:\n$contextText\n\nQuestion: $userQuestion";
               final content = [Content.text(prompt)];
               final response = await model.generateContent(content);
@@ -192,7 +204,7 @@ jobs:
               });
             } catch (e) {
               setState(() {
-                _aiResponse = "Error sa AI: $e\n\nPakisiguro na tama ang API Key mo.";
+                _aiResponse = "Error sa AI: $e\n\nSiguraduhing walang kulang na letra sa iyong API Key.";
               });
             } finally {
               setState(() {
@@ -202,6 +214,7 @@ jobs:
           }
 
           void _showSettingsDialog() {
+            _keyInputController.text = widget.apiKey;
             showDialog(
               context: context,
               builder: (context) => AlertDialog(
@@ -303,30 +316,69 @@ jobs:
             }
           }
 
-          void _saveNote() async {
+          // ✨ FEATURE: I-save o I-update ang Note at isulat sa Storage File
+          void _saveOrUpdateNote() async {
             String txt = _textController.text.trim();
             if (txt.isEmpty) return;
 
             setState(() {
-              _savedNotes.insert(0, {
-                'text': txt,
-                'category': _selectedCategory,
-                'date': "${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}"
-              });
+              if (_editingIndex != null) {
+                // UPDATE: Palitan ang kasalukuyang ine-edit na note
+                _savedNotes[_editingIndex!] = {
+                  'text': txt,
+                  'category': _selectedCategory,
+                  'date': "${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year} (Edited)"
+                };
+                _editingIndex = null; // I-clear ang edit state
+              } else {
+                // SAVE NEW: Magdagdag ng panibagong note
+                _savedNotes.insert(0, {
+                  'text': txt,
+                  'category': _selectedCategory,
+                  'date': "${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}"
+                });
+              }
               _filteredNotes = List.from(_savedNotes);
               _textController.clear();
               _finalizedText = "";
               _interimText = "";
             });
 
+            _writeNotesToStorage();
+
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Note changes saved successfully!')),
+            );
+          }
+
+          // ✨ FEATURE: Burahin ang Note gamit ang Index
+          void _deleteNote(int index) async {
+            setState(() {
+              // I-sync ang tamang index kung may search filter na aktibo
+              final noteToDelete = _filteredNotes[index];
+              _savedNotes.removeWhere((element) => element == noteToDelete);
+              _filteredNotes.removeAt(index);
+              
+              // I-cancel ang kasalukuyang ine-edit kung ito ang binura
+              if (_editingIndex == index) {
+                _editingIndex = null;
+                _textController.clear();
+              }
+            });
+
+            _writeNotesToStorage();
+
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Note successfully deleted.')),
+            );
+          }
+
+          // Shared module para sa pag-sync ng records sa file
+          void _writeNotesToStorage() async {
             final directory = await getApplicationDocumentsDirectory();
             final file = File('${directory.path}/choynotes_pro.txt');
             List<String> rawLines = _savedNotes.map((n) => "${n['category']}|${n['date']}|${n['text']}").toList();
             await file.writeAsString(rawLines.join('\n===\n'));
-
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Transcript successfully saved!')),
-            );
           }
 
           void _loadNotes() async {
@@ -436,7 +488,7 @@ jobs:
                                     height: 180,
                                     padding: const EdgeInsets.all(12),
                                     decoration: BoxDecoration(
-                                      border: Border.all(color: isDark ? Colors.white60 : Colors.black38),
+                                      border: Border.all(color: _editingIndex != null ? Colors.amber : (isDark ? Colors.white60 : Colors.black38)),
                                       borderRadius: BorderRadius.circular(16),
                                       color: isDark ? Colors.transparent : Colors.white,
                                     ),
@@ -447,7 +499,7 @@ jobs:
                                       style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 16),
                                       decoration: InputDecoration(
                                         border: InputBorder.none,
-                                        hintText: "Tap the microphone below and speak to transcribe...",
+                                        hintText: _editingIndex != null ? "Baguhin ang nilalaman ng note na ito..." : "Tap the microphone below and speak to transcribe...",
                                         hintStyle: TextStyle(color: isDark ? Colors.white38 : Colors.black38),
                                       ),
                                     ),
@@ -457,11 +509,12 @@ jobs:
                                     width: double.infinity,
                                     height: 50,
                                     child: ElevatedButton.icon(
-                                      onPressed: _saveNote,
-                                      icon: const Icon(Icons.bookmark, color: Colors.white),
-                                      label: const Text("Save Transcript", style: TextStyle(fontSize: 16, color: Colors.white)),
+                                      onPressed: _saveOrUpdateNote,
+                                      // ✨ Dynamic Label text para sa Edit state
+                                      icon: Icon(_editingIndex != null ? Icons.edit_note : Icons.bookmark, color: Colors.white),
+                                      label: Text(_editingIndex != null ? "Update Transcript" : "Save Transcript", style: const TextStyle(fontSize: 16, color: Colors.white)),
                                       style: ElevatedButton.styleFrom(
-                                        backgroundColor: const Color(0xFF3B82F6),
+                                        backgroundColor: _editingIndex != null ? Colors.amber.shade800 : const Color(0xFF3B82F6),
                                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                       ),
                                     ),
@@ -494,11 +547,19 @@ jobs:
                                               child: ListTile(
                                                 title: Text(item['text'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
                                                 subtitle: Text("${item['category']} • ${item['date']}", style: const TextStyle(color: Colors.grey)),
-                                                trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+                                                // ✨ I-tap para i-load sa edit box
+                                                leading: Icon(Icons.edit, size: 18, color: _editingIndex == index ? Colors.amber : Colors.grey),
+                                                // ✨ Trailing delete button module
+                                                trailing: IconButton(
+                                                  icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 22),
+                                                  onPressed: () => _deleteNote(index),
+                                                ),
                                                 onTap: () {
                                                   setState(() {
+                                                    _editingIndex = index;
                                                     _textController.text = item['text'] ?? '';
                                                     _finalizedText = item['text'] ?? '';
+                                                    _selectedCategory = item['category'] ?? 'General';
                                                   });
                                                 },
                                               ),
