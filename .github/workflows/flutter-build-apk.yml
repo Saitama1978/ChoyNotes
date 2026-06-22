@@ -135,7 +135,6 @@ jobs:
           String _aiResponse = "";
           bool _isAiLoading = false;
 
-          // ✨ State para sa pag-track kung may ine-edit na note
           int? _editingIndex; 
 
           String _selectedCategory = 'General';
@@ -173,7 +172,8 @@ jobs:
             });
           }
 
-          void _askAI(String contextText, String userQuestion) async {
+          // 🛠️ PINALAWAK AT FIXED NA AI RESPONSE METHOD
+          void _askAI(String contextText, String userQuestion, {bool isDirectPrompt = false}) async {
             final targetKey = widget.apiKey.trim();
 
             if (targetKey.isEmpty) {
@@ -182,7 +182,8 @@ jobs:
               });
               return;
             }
-            if (contextText.isEmpty) {
+
+            if (contextText.trim().isEmpty && !isDirectPrompt) {
               setState(() {
                 _aiResponse = "Walang nakasulat na text na pwedeng suriin ng AI.";
               });
@@ -195,16 +196,28 @@ jobs:
             });
 
             try {
-              final model = GenerativeModel(model: 'gemini-1.5-flash', apiKey: targetKey);
-              final prompt = "Context:\n$contextText\n\nQuestion: $userQuestion";
-              final content = [Content.text(prompt)];
+              // Standard initialization para sa Google Generative AI
+              final model = GenerativeModel(
+                model: 'gemini-1.5-flash', 
+                apiKey: targetKey,
+              );
+              
+              String finalPrompt = "";
+              if (contextText.trim().isNotEmpty) {
+                finalPrompt = "Context:\n$contextText\n\nQuestion: $userQuestion";
+              } else {
+                finalPrompt = userQuestion;
+              }
+
+              final content = [Content.text(finalPrompt)];
               final response = await model.generateContent(content);
+              
               setState(() {
                 _aiResponse = response.text ?? "Walang sagot mula sa AI.";
               });
             } catch (e) {
               setState(() {
-                _aiResponse = "Error sa AI: $e\n\nSiguraduhing walang kulang na letra sa iyong API Key.";
+                _aiResponse = "Error sa AI: $e\n\nSiguraduhing balido ang iyong API Key at may internet connection ang device.";
               });
             } finally {
               setState(() {
@@ -316,22 +329,19 @@ jobs:
             }
           }
 
-          // ✨ FEATURE: I-save o I-update ang Note at isulat sa Storage File
           void _saveOrUpdateNote() async {
             String txt = _textController.text.trim();
             if (txt.isEmpty) return;
 
             setState(() {
               if (_editingIndex != null) {
-                // UPDATE: Palitan ang kasalukuyang ine-edit na note
                 _savedNotes[_editingIndex!] = {
                   'text': txt,
                   'category': _selectedCategory,
                   'date': "${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year} (Edited)"
                 };
-                _editingIndex = null; // I-clear ang edit state
+                _editingIndex = null;
               } else {
-                // SAVE NEW: Magdagdag ng panibagong note
                 _savedNotes.insert(0, {
                   'text': txt,
                   'category': _selectedCategory,
@@ -351,15 +361,12 @@ jobs:
             );
           }
 
-          // ✨ FEATURE: Burahin ang Note gamit ang Index
           void _deleteNote(int index) async {
             setState(() {
-              // I-sync ang tamang index kung may search filter na aktibo
               final noteToDelete = _filteredNotes[index];
               _savedNotes.removeWhere((element) => element == noteToDelete);
               _filteredNotes.removeAt(index);
               
-              // I-cancel ang kasalukuyang ine-edit kung ito ang binura
               if (_editingIndex == index) {
                 _editingIndex = null;
                 _textController.clear();
@@ -373,7 +380,6 @@ jobs:
             );
           }
 
-          // Shared module para sa pag-sync ng records sa file
           void _writeNotesToStorage() async {
             final directory = await getApplicationDocumentsDirectory();
             final file = File('${directory.path}/choynotes_pro.txt');
@@ -510,7 +516,6 @@ jobs:
                                     height: 50,
                                     child: ElevatedButton.icon(
                                       onPressed: _saveOrUpdateNote,
-                                      // ✨ Dynamic Label text para sa Edit state
                                       icon: Icon(_editingIndex != null ? Icons.edit_note : Icons.bookmark, color: Colors.white),
                                       label: Text(_editingIndex != null ? "Update Transcript" : "Save Transcript", style: const TextStyle(fontSize: 16, color: Colors.white)),
                                       style: ElevatedButton.styleFrom(
@@ -547,9 +552,7 @@ jobs:
                                               child: ListTile(
                                                 title: Text(item['text'] ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
                                                 subtitle: Text("${item['category']} • ${item['date']}", style: const TextStyle(color: Colors.grey)),
-                                                // ✨ I-tap para i-load sa edit box
                                                 leading: Icon(Icons.edit, size: 18, color: _editingIndex == index ? Colors.amber : Colors.grey),
-                                                // ✨ Trailing delete button module
                                                 trailing: IconButton(
                                                   icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 22),
                                                   onPressed: () => _deleteNote(index),
@@ -584,7 +587,7 @@ jobs:
                                     decoration: BoxDecoration(color: isDark ? const Color(0xFF1E293B) : Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade300)),
                                     child: SingleChildScrollView(
                                       child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        cross         : CrossAxisAlignment.start,
                                         children: [
                                           const Text("Sagot ng AI:", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent, fontSize: 16)),
                                           const Divider(),
@@ -624,7 +627,7 @@ jobs:
                                       icon: const Icon(Icons.send, color: Colors.blueAccent),
                                       onPressed: () {
                                         if (_aiQueryController.text.trim().isNotEmpty) {
-                                          _askAI(_textController.text, _aiQueryController.text.trim());
+                                          _askAI(_textController.text, _aiQueryController.text.trim(), isDirectPrompt: true);
                                           _aiQueryController.clear();
                                         }
                                       },
