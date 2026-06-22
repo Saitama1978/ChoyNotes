@@ -182,9 +182,10 @@ jobs:
               return;
             }
 
+            // Pinahusay na checking para sa Summary/Action Items buttons
             if (contextText.trim().isEmpty && !isDirectPrompt) {
               setState(() {
-                _aiResponse = "Walang nakasulat na text na pwedeng suriin ng AI.";
+                _aiResponse = "Paalala: Walang nakasulat na teksto sa Transcribe box (Tab 1) para gawan ng Summary o Action Items. Mag-transcribe o pumili muna ng note doon.";
               });
               return;
             }
@@ -201,8 +202,10 @@ jobs:
               );
               
               String finalPrompt = "";
-              if (contextText.trim().isNotEmpty) {
-                finalPrompt = "Context:\n$contextText\n\nQuestion: $userQuestion";
+              if (contextText.trim().isNotEmpty && !isDirectPrompt) {
+                finalPrompt = "Suriin ang sumusunod na text at ibigay ang hinihingi:\n\nText:\n$contextText\n\nKautusan: $userQuestion";
+              } else if (contextText.trim().isNotEmpty && isDirectPrompt) {
+                finalPrompt = "Context:\n$contextText\n\nTanong ng User: $userQuestion";
               } else {
                 finalPrompt = userQuestion;
               }
@@ -601,8 +604,16 @@ jobs:
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                                   children: [
-                                    ElevatedButton.icon(onPressed: () => _askAI(_textController.text, "Ibigay ang buod sa bullet points."), icon: const Icon(Icons.summarize), label: const Text("Summary")),
-                                    ElevatedButton.icon(onPressed: () => _askAI(_textController.text, "Ano ang mahahalagang Action Items dito?"), icon: const Icon(Icons.task_alt), label: const Text("Action Items")),
+                                    ElevatedButton.icon(
+                                      onPressed: () => _askAI(_textController.text, "Ibigay ang buod sa bullet points.", isDirectPrompt: false), 
+                                      icon: const Icon(Icons.summarize), 
+                                      label: const Text("Summary")
+                                    ),
+                                    ElevatedButton.icon(
+                                      onPressed: () => _askAI(_textController.text, "Ano ang mahahalagang Action Items dito?", isDirectPrompt: false), 
+                                      icon: const Icon(Icons.task_alt), 
+                                      label: const Text("Action Items")
+                                    ),
                                   ],
                                 ),
                                 const SizedBox(height: 12),
